@@ -1,0 +1,340 @@
+/* ── Onboarding Wizard ──────────────────────────────── */
+
+.onboarding-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+  position: relative;
+}
+
+.onboarding-bg-glow {
+  position: fixed;
+  top: 20%;
+  right: 20%;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(ellipse, rgba(124, 92, 255, 0.06), transparent 70%);
+  filter: blur(100px);
+  pointer-events: none;
+}
+
+.onboarding-container {
+  width: 100%;
+  max-width: 900px;
+}
+
+/* ── Progress Bar ────────────────────────────────────── */
+.onboarding-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: var(--space-2xl);
+}
+
+.onboarding-progress-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.progress-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 2px solid var(--border-default);
+  transition: all var(--transition-base);
+  flex-shrink: 0;
+}
+
+.progress-dot.active {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 20px var(--accent-primary-glow);
+}
+
+.progress-dot.completed {
+  background: var(--accent-secondary);
+  border-color: var(--accent-secondary);
+  color: white;
+}
+
+.progress-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-weight: 500;
+  transition: color var(--transition-fast);
+  margin-right: var(--space-sm);
+}
+
+.progress-label.active {
+  color: var(--text-primary);
+}
+
+.progress-line {
+  width: 60px;
+  height: 2px;
+  background: var(--border-default);
+  margin: 0 var(--space-sm);
+  transition: background var(--transition-base);
+}
+
+.progress-line.active {
+  background: var(--accent-secondary);
+}
+
+/* ── Step Container ──────────────────────────────────── */
+.onboarding-step {
+  background: var(--bg-glass);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: var(--space-2xl);
+}
+
+.step-header {
+  text-align: center;
+  margin-bottom: var(--space-xl);
+}
+
+.step-header h2 {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  margin-bottom: var(--space-xs);
+}
+
+.step-header p {
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+}
+
+.step-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.step-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ── Subdomain Input ─────────────────────────────────── */
+.subdomain-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.subdomain-input {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+  flex: 1;
+}
+
+.subdomain-suffix {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-left: none;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.subdomain-preview {
+  font-size: var(--font-size-xs);
+  color: var(--accent-secondary);
+}
+
+/* ── Plan Selection Grid ─────────────────────────────── */
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.plan-card {
+  padding: var(--space-lg);
+  cursor: pointer;
+  position: relative;
+  transition: all var(--transition-base);
+}
+
+.plan-card.selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 30px var(--accent-primary-glow);
+}
+
+.plan-card.popular {
+  position: relative;
+}
+
+.plan-popular-tag {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 12px;
+  background: linear-gradient(135deg, var(--accent-primary), #6246e5);
+  color: white;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.plan-card-header {
+  margin-bottom: var(--space-md);
+}
+
+.plan-card-name {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  margin-bottom: var(--space-xs);
+}
+
+.plan-card-price {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.plan-price-amount {
+  font-size: var(--font-size-3xl);
+  font-weight: 800;
+}
+
+.plan-price-period {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.plan-card-features {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.plan-card-features li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.plan-check {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.plan-card-radio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.plan-card-radio.checked {
+  border-color: var(--accent-primary);
+}
+
+.plan-card-radio-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  animation: scaleIn var(--transition-fast) ease;
+}
+
+/* ── Summary ─────────────────────────────────────────── */
+.onboarding-summary {
+  padding: var(--space-lg);
+  margin-top: var(--space-sm);
+}
+
+.onboarding-summary h4 {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-md);
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.summary-row:last-child {
+  border-bottom: none;
+}
+
+.summary-row span {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.summary-row strong {
+  font-size: var(--font-size-sm);
+}
+
+/* ── Error ───────────────────────────────────────────── */
+.onboarding-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background: rgba(255, 92, 114, 0.1);
+  border: 1px solid rgba(255, 92, 114, 0.2);
+  border-radius: var(--radius-md);
+  color: var(--accent-danger);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-lg);
+}
+
+/* ── Responsive ──────────────────────────────────────── */
+@media (max-width: 768px) {
+  .plan-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .onboarding-progress {
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .progress-line {
+    width: 30px;
+  }
+}

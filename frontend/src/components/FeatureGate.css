@@ -1,0 +1,37 @@
+.feature-gate-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  padding: var(--space-2xl);
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  text-align: center;
+  animation: fadeIn var(--transition-base) ease;
+}
+
+.feature-gate-icon {
+  font-size: 2.5rem;
+  animation: float 3s ease-in-out infinite;
+}
+
+.feature-gate-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.feature-gate-text {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  max-width: 320px;
+  line-height: 1.6;
+}
+
+.feature-gate-text strong {
+  text-transform: capitalize;
+  color: var(--accent-primary);
+}

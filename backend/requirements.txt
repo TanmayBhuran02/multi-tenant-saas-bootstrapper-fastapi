@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]
+asyncpg
+alembic
+pyjwt
+passlib[bcrypt]
+pydantic[email]
+python-dotenv
+pydantic-settings
