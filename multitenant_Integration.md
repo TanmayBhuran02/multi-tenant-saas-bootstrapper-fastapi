@@ -1,6 +1,6 @@
 # Multi-Tenant SaaS Bootstrapper — Integration Guide
 
-A step-by-step guide for injecting the **Multi-Tenant SaaS Bootstrapper** into your own project and integrating every feature it ships with.
+A step-by-step guide for injecting the **Multi-Tenant SaaS Bootstrapper** (FastAPI edition) into your own project and integrating every feature it ships with.
 
 ---
 
@@ -46,46 +46,35 @@ A step-by-step guide for injecting the **Multi-Tenant SaaS Bootstrapper** into y
 
 ```bash
 # From your project root
-git submodule add https://github.com/your-org/saas-bootstrapper.git lib/saas-bootstrapper
+git submodule add https://github.com/your-org/saas-bootstrapper-fastapi.git lib/saas-bootstrapper
 git submodule update --init --recursive
 ```
 
-Then symlink or copy the relevant backend modules into your Flask app:
+Then copy the relevant backend modules into your FastAPI app:
 
 ```bash
-# Copy the core multi-tenant modules into your project
-cp -r lib/saas-bootstrapper/backend/app/tenants      your_app/tenants
-cp -r lib/saas-bootstrapper/backend/app/auth          your_app/auth
-cp -r lib/saas-bootstrapper/backend/app/rls           your_app/rls
-cp -r lib/saas-bootstrapper/backend/app/features      your_app/features
-cp -r lib/saas-bootstrapper/backend/app/billing       your_app/billing
-cp -r lib/saas-bootstrapper/backend/app/admin         your_app/admin
-cp -r lib/saas-bootstrapper/backend/app/models        your_app/models
-cp    lib/saas-bootstrapper/backend/app/extensions.py  your_app/extensions.py
+# Copy the core multi-tenant app package into your project
+cp -r lib/saas-bootstrapper/backend/app   your_project/backend/app
+
+# Copy migration setup
+cp -r lib/saas-bootstrapper/backend/alembic       your_project/backend/alembic
+cp    lib/saas-bootstrapper/backend/alembic.ini    your_project/backend/alembic.ini
+
+# Copy the seed script
+cp    lib/saas-bootstrapper/backend/seed.py        your_project/backend/seed.py
 ```
 
 #### Option B — Direct Copy (simpler, no git history)
 
 ```bash
 # Clone once and copy what you need
-git clone https://github.com/your-org/saas-bootstrapper.git /tmp/saas-bootstrapper
+git clone https://github.com/your-org/saas-bootstrapper-fastapi.git /tmp/saas-bootstrapper
 
 # Copy backend modules
-cp -r /tmp/saas-bootstrapper/backend/app/tenants      your_app/tenants
-cp -r /tmp/saas-bootstrapper/backend/app/auth          your_app/auth
-cp -r /tmp/saas-bootstrapper/backend/app/rls           your_app/rls
-cp -r /tmp/saas-bootstrapper/backend/app/features      your_app/features
-cp -r /tmp/saas-bootstrapper/backend/app/billing       your_app/billing
-cp -r /tmp/saas-bootstrapper/backend/app/admin         your_app/admin
-cp -r /tmp/saas-bootstrapper/backend/app/models        your_app/models
-cp    /tmp/saas-bootstrapper/backend/app/extensions.py  your_app/extensions.py
-
-# Copy config and seed script
-cp /tmp/saas-bootstrapper/backend/config.py   your_project/backend/config.py
-cp /tmp/saas-bootstrapper/backend/seed.py     your_project/backend/seed.py
-
-# Copy migration setup
-cp -r /tmp/saas-bootstrapper/backend/migrations your_project/backend/migrations
+cp -r /tmp/saas-bootstrapper/backend/app           your_project/backend/app
+cp -r /tmp/saas-bootstrapper/backend/alembic       your_project/backend/alembic
+cp    /tmp/saas-bootstrapper/backend/alembic.ini    your_project/backend/alembic.ini
+cp    /tmp/saas-bootstrapper/backend/seed.py        your_project/backend/seed.py
 ```
 
 #### Install Python Dependencies
@@ -93,15 +82,16 @@ cp -r /tmp/saas-bootstrapper/backend/migrations your_project/backend/migrations
 Add these to your `requirements.txt` (or merge with your existing one):
 
 ```text
-flask==3.1.1
-flask-sqlalchemy==3.1.1
-flask-migrate==4.1.0
-flask-jwt-extended==4.7.1
-flask-cors==5.0.1
-psycopg2-binary==2.9.10
-python-dotenv==1.1.0
-gunicorn==23.0.0
-werkzeug==3.1.3
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]
+asyncpg
+alembic
+pyjwt
+passlib[bcrypt]
+pydantic[email]
+python-dotenv
+pydantic-settings
 ```
 
 Then install:
@@ -143,12 +133,12 @@ npm install axios zustand react-router-dom @tanstack/react-query recharts react-
 #### Create your `.env` file (backend)
 
 ```bash
-# ─── Flask ───────────────────────────────────────────────
-FLASK_APP=run.py
-FLASK_ENV=development
+# ─── App ─────────────────────────────────────────────────
 SECRET_KEY=change-me-to-a-random-string
+DEBUG=True
 
 # ─── Database ────────────────────────────────────────────
+# Use postgresql:// — the app auto-converts to postgresql+asyncpg://
 DATABASE_URL=postgresql://your_user:your_pass@localhost:5432/your_db
 
 # ─── JWT ─────────────────────────────────────────────────
@@ -165,7 +155,7 @@ CORS_ORIGINS=http://localhost:5173
 #### Create your `.env.local` file (frontend)
 
 ```bash
-VITE_API_URL=http://localhost:5000
+VITE_API_URL=http://localhost:8000
 ```
 
 #### Run Migrations & Seed
@@ -173,8 +163,8 @@ VITE_API_URL=http://localhost:5000
 ```bash
 cd your_project/backend
 
-# Initialize the database schema
-flask db upgrade
+# Apply database schema via Alembic
+alembic upgrade head
 
 # Seed the default superadmin and demo tenant
 python seed.py
@@ -184,9 +174,17 @@ python seed.py
 >
 > | User | Email | Password |
 > |---|---|---|
-> | Superadmin | `admin@saas.local` | `superadmin123` |
-> | Demo Owner | `owner@demo.local` | `demo12345` |
-> | Demo Member | `member@demo.local` | `demo12345` |
+> | Superadmin | `admin@saas.com` | `superadmin123` |
+> | Demo Owner | `owner@demo.com` | `demo12345` |
+> | Demo Member | `member@demo.com` | `demo12345` |
+
+#### Start the Backend (Development)
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The interactive API docs are available at `http://localhost:8000/docs`.
 
 ---
 
@@ -197,34 +195,36 @@ python seed.py
 #### What it provides
 
 - Create (provision) new tenants with an owner user and default feature flags
-- Soft-delete tenants (preserves audit trail)
+- Soft-delete tenants (status → `deleted`, preserves audit trail)
 - Per-tenant configuration (key-value store with secret masking)
 - User management per tenant
 
 #### Backend Integration
 
-Register the tenants blueprint in your app factory:
+Include the tenants router in your FastAPI app:
 
 ```python
-# your_app/__init__.py
-from your_app.tenants.routes import tenants_bp
+# app/main.py
+from fastapi import FastAPI
+from app.api.routers import tenants
 
-app.register_blueprint(tenants_bp)
+app = FastAPI()
+app.include_router(tenants.router, prefix="/api/tenants", tags=["Tenants"])
 ```
 
 #### Key Files
 
 | File | Purpose |
 |---|---|
-| `tenants/models.py` | `Tenant`, `TenantConfig`, `User`, `FeatureFlag` models |
-| `tenants/routes.py` | `/api/tenants/provision`, `DELETE`, `config` CRUD |
-| `tenants/middleware.py` | Request-level tenant resolution |
+| `app/models/domain.py` | `Tenant`, `TenantConfig`, `User`, `FeatureFlag` SQLAlchemy models |
+| `app/api/routers/tenants.py` | `/api/tenants/provision`, `DELETE`, `config` CRUD, `/users` |
+| `app/core/middleware.py` | `TenantMiddleware` — request-level tenant resolution |
 
 #### API Endpoints
 
 ```bash
 # Provision a new tenant (superadmin only)
-curl -X POST http://localhost:5000/api/tenants/provision \
+curl -X POST http://localhost:8000/api/tenants/provision \
   -H "Authorization: Bearer <superadmin_token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -236,21 +236,21 @@ curl -X POST http://localhost:5000/api/tenants/provision \
   }'
 
 # Soft-delete a tenant
-curl -X DELETE http://localhost:5000/api/tenants/<tenant_id> \
+curl -X DELETE http://localhost:8000/api/tenants/<tenant_id> \
   -H "Authorization: Bearer <superadmin_token>"
 
 # Get tenant config
-curl http://localhost:5000/api/tenants/<tenant_id>/config \
+curl http://localhost:8000/api/tenants/<tenant_id>/config \
   -H "Authorization: Bearer <token>"
 
 # Upsert a config entry
-curl -X PATCH http://localhost:5000/api/tenants/<tenant_id>/config \
+curl -X PATCH http://localhost:8000/api/tenants/<tenant_id>/config \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"key": "theme_color", "value": "#6366f1", "is_secret": false}'
 
 # List tenant users
-curl http://localhost:5000/api/tenants/<tenant_id>/users \
+curl http://localhost:8000/api/tenants/<tenant_id>/users \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -262,18 +262,24 @@ curl http://localhost:5000/api/tenants/<tenant_id>/users \
 
 - Automatic tenant resolution from the `Host` header (e.g., `acme.yoursaas.com`)
 - Fallback to `X-Tenant-ID` header for local development
-- Sets `flask.g.tenant` and `flask.g.tenant_id` on every request
-- Automatically activates RLS context for the resolved tenant
+- Sets `request.state.tenant` on every request
+- Automatically activates the RLS context variable for the resolved tenant
 
 #### Backend Integration
 
-Register the middleware in your app factory:
+Add `TenantMiddleware` in your app factory (it uses Starlette's `BaseHTTPMiddleware`):
 
 ```python
-# your_app/__init__.py
-from your_app.tenants.middleware import register_tenant_middleware
+# app/main.py
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.middleware import TenantMiddleware
 
-register_tenant_middleware(app)
+app = FastAPI()
+
+# CORS must be added BEFORE TenantMiddleware
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(TenantMiddleware)
 ```
 
 #### How Tenant Resolution Works
@@ -281,19 +287,21 @@ register_tenant_middleware(app)
 ```
 Request arrives
     │
-    ├─ Host: acme.yoursaas.com → extract "acme" → lookup Tenant(subdomain="acme")
+    ├─ Host: acme.yoursaas.com → extract "acme" → lookup Tenant(subdomain="acme", status="active")
     │
-    ├─ Host: localhost:5000 + X-Tenant-ID header → lookup Tenant(id=header_value)
+    ├─ Host: localhost:8000 + X-Tenant-ID header → lookup Tenant(id=header_value, status="active")
     │
-    └─ No match → g.tenant = None (unauthenticated / public route)
+    └─ No match → request.state.tenant = None (unauthenticated / public route)
 ```
+
+The middleware also calls `clear_tenant_id()` before and after each request to prevent context leakage between requests in the same worker process.
 
 #### Local Development (Without Subdomain DNS)
 
 Pass the `X-Tenant-ID` header in all requests:
 
 ```bash
-curl http://localhost:5000/api/features/ \
+curl http://localhost:8000/api/features/ \
   -H "Authorization: Bearer <token>" \
   -H "X-Tenant-ID: <tenant_uuid>"
 ```
@@ -308,7 +316,7 @@ For production, configure wildcard DNS:
 *.yoursaas.com → your server IP
 ```
 
-Then update the middleware's `_SKIP_HOSTS` regex if you have custom patterns to exclude.
+The middleware's `_SKIP_HOSTS` regex automatically ignores `localhost`, `127.0.0.1`, and raw IP addresses so local development works without DNS.
 
 ---
 
@@ -323,32 +331,32 @@ Then update the middleware's `_SKIP_HOSTS` regex if you have custom patterns to 
 
 #### Backend Integration
 
-Register the RLS listener in your app factory:
+Call `register_rls_listener()` once in your app startup (or module import):
 
 ```python
-# your_app/__init__.py
-from your_app.rls import register_rls_listener
+# app/main.py  (or wherever you initialize the app)
+from app.core.rls import register_rls_listener
 
 register_rls_listener()
 ```
 
 #### How it Works
 
-1. **ContextVar**: The current `tenant_id` is stored in a `contextvars.ContextVar`, set by the tenant middleware on each request.
+1. **ContextVar**: The current `tenant_id` is stored in a `contextvars.ContextVar`, set by `TenantMiddleware` on each request.
 
 2. **SQLAlchemy Event**: A `do_orm_execute` listener intercepts every ORM `SELECT` and appends `.where(Model.tenant_id == current_tenant_id)` for any model that has a `tenant_id` column.
 
 3. **Bypass**: Superadmin routes use `bypass_rls()` to query across tenants:
 
 ```python
-from your_app.rls import bypass_rls
+from app.core.rls import bypass_rls
 
 # Normal query — automatically filtered to current tenant
-users = User.query.all()  # Only returns users for the current tenant
+result = await db.execute(select(User))  # Only returns users for the current tenant
 
 # Superadmin query — bypasses RLS
 with bypass_rls():
-    all_users = User.query.all()  # Returns ALL users across all tenants
+    result = await db.execute(select(User))  # Returns ALL users across all tenants
 ```
 
 #### RLS Public API
@@ -371,75 +379,74 @@ Any model with a `tenant_id` column is **automatically** filtered by RLS. See [A
 
 #### What it provides
 
-- JWT-based authentication with `flask-jwt-extended`
+- JWT-based authentication using `pyjwt` (HS256)
 - Token includes `tenant_id`, `role`, `is_superadmin`, and `email` claims
-- Route decorators: `@require_tenant`, `@superadmin_only`, `@require_role`
+- FastAPI `Depends()` functions: `require_tenant`, `superadmin_only`, `require_role`
 - User registration within tenant scope
 - Profile endpoint
 
 #### Backend Integration
 
-Register the auth blueprint and JWT callbacks in your app factory:
+Include the auth router and wire the dependency injection:
 
 ```python
-# your_app/__init__.py
-from your_app.extensions import jwt
+# app/main.py
+from app.api.routers import auth
 
-jwt.init_app(app)
-
-from your_app.auth.routes import auth_bp
-app.register_blueprint(auth_bp)
-
-from your_app.auth.jwt import configure_jwt
-configure_jwt(app)
+app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 ```
+
+JWT verification is handled by the dependency functions in `app/api/dependencies.py`. No additional initialization is needed.
 
 #### JWT Token Claims
 
-When a user logs in, the JWT token contains:
+When a user logs in, the JWT payload contains:
 
 ```json
 {
   "sub": "<user_id>",
+  "exp": "<unix_timestamp>",
   "tenant_id": "<tenant_uuid>",
-  "role": "owner | admin | member",
   "is_superadmin": false,
+  "role": "owner | admin | member",
   "email": "user@example.com"
 }
 ```
 
-#### Auth Decorators
+#### Auth Dependencies
 
-Use these decorators on your own routes:
+Use these `Depends()` functions to protect your own routes:
 
 ```python
-from your_app.auth.decorators import require_tenant, superadmin_only, require_role
+from fastapi import APIRouter, Depends
+from app.api.dependencies import require_tenant, superadmin_only, require_role, get_current_user
+from app.models.domain import User
+
+router = APIRouter()
 
 # Requires a valid JWT with tenant context
-@app.route('/api/my-feature')
-@require_tenant
-def my_feature():
-    from flask import g
-    user = g.current_user  # The authenticated User object
-    tenant_id = g.tenant_id
-    return {'message': f'Hello {user.email} from tenant {tenant_id}'}
+@router.get("/my-feature")
+async def my_feature(claims: dict = Depends(require_tenant)):
+    tenant_id = claims["tenant_id"]
+    user_email = claims["email"]
+    return {"message": f"Hello {user_email} from tenant {tenant_id}"}
 
 
-# Requires superadmin — bypasses RLS automatically
-@app.route('/api/admin/special')
-@superadmin_only
-def admin_special():
-    # RLS is bypassed in this scope
-    all_tenants = Tenant.query.all()
-    return {'count': len(all_tenants)}
+# Requires full User object (fetched from DB)
+@router.get("/profile")
+async def profile(user: User = Depends(get_current_user)):
+    return user.to_dict()
 
 
-# Requires specific role(s) — must be used AFTER @require_tenant
-@app.route('/api/settings', methods=['PATCH'])
-@require_tenant
-@require_role('owner', 'admin')
-def update_settings():
-    # Only owners and admins can reach here
+# Requires superadmin — use bypass_rls() inside if querying across tenants
+@router.get("/admin/special")
+async def admin_special(_: dict = Depends(superadmin_only)):
+    ...
+
+
+# Requires specific role(s) — built on top of require_tenant
+@router.patch("/settings")
+async def update_settings(claims: dict = Depends(require_role(["owner", "admin"]))):
     ...
 ```
 
@@ -456,19 +463,19 @@ def update_settings():
 
 ```bash
 # Login
-curl -X POST http://localhost:5000/api/auth/login \
+curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email": "alice@acme.com", "password": "secret"}'
 
-# Get profile
-curl http://localhost:5000/api/auth/me \
+# Get profile (requires tenant context)
+curl http://localhost:8000/api/auth/me \
   -H "Authorization: Bearer <token>"
 
 # Register a new user within a tenant
-curl -X POST http://localhost:5000/api/auth/register \
+curl -X POST http://localhost:8000/api/auth/register \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"email": "bob@acme.com", "password": "secure-pass"}'
+  -d '{"email": "bob@acme.com", "password": "secure-pass", "role": "member"}'
 ```
 
 ---
@@ -479,19 +486,18 @@ curl -X POST http://localhost:5000/api/auth/register \
 
 - Per-tenant feature flag management
 - Plan-based default flags (auto-seeded on tenant creation)
-- Superadmin toggle for individual flags
-- Flag upgrade logic that preserves manual overrides
-- Optional JSON payload per flag
+- Superadmin toggle for individual flags with optional JSON payload
+- `upgrade_flags()` logic that enables new flags when a tenant's plan is upgraded
 
 #### Backend Integration
 
-Register the features blueprint:
+Include the features router:
 
 ```python
-# your_app/__init__.py
-from your_app.features.routes import features_bp
+# app/main.py
+from app.api.routers import features
 
-app.register_blueprint(features_bp)
+app.include_router(features.router, prefix="/api/features", tags=["Features"])
 ```
 
 #### Default Flags Per Plan
@@ -510,10 +516,10 @@ app.register_blueprint(features_bp)
 
 #### Adding Custom Flags
 
-Edit `features/flags.py` to add your own flags:
+Edit `app/core/flags.py` to add your own flags:
 
 ```python
-# features/flags.py
+# app/core/flags.py
 
 PLAN_FLAGS = {
     PlanType.free: [
@@ -534,38 +540,47 @@ PLAN_FLAGS = {
 #### Checking Flags in Backend Code
 
 ```python
-from your_app.tenants.models import FeatureFlag
+from sqlalchemy import select
+from app.models.domain import FeatureFlag
 
-def is_flag_enabled(tenant_id, flag_name):
-    flag = FeatureFlag.query.filter_by(
-        tenant_id=tenant_id,
-        flag_name=flag_name,
-    ).first()
+async def is_flag_enabled(db, tenant_id: str, flag_name: str) -> bool:
+    result = await db.execute(
+        select(FeatureFlag).where(
+            FeatureFlag.tenant_id == tenant_id,
+            FeatureFlag.flag_name == flag_name,
+        )
+    )
+    flag = result.scalar_one_or_none()
     return flag.enabled if flag else False
 
 
 # Usage in a route
-@app.route('/api/webhooks')
-@require_tenant
-def webhooks():
-    from flask import g
-    if not is_flag_enabled(g.tenant_id, 'webhooks'):
-        return {'error': 'Feature not available on your plan', 'code': 'FEATURE_DISABLED'}, 403
+from fastapi import HTTPException, Depends
+from app.db.session import get_db
+
+@router.get("/webhooks")
+async def webhooks(
+    claims: dict = Depends(require_tenant),
+    db: AsyncSession = Depends(get_db),
+):
+    enabled = await is_flag_enabled(db, claims["tenant_id"], "webhooks")
+    if not enabled:
+        raise HTTPException(status_code=403, detail="Feature not available on your plan")
     # ... webhook logic
 ```
 
 #### API Endpoints
 
 ```bash
-# List all flags for current tenant
-curl http://localhost:5000/api/features/ \
+# List all flags for current tenant (RLS auto-filters to tenant)
+curl http://localhost:8000/api/features/ \
   -H "Authorization: Bearer <token>"
 
 # Toggle a flag (superadmin only)
-curl -X PATCH http://localhost:5000/api/features/webhooks \
+curl -X PATCH http://localhost:8000/api/features/webhooks \
   -H "Authorization: Bearer <superadmin_token>" \
   -H "Content-Type: application/json" \
-  -d '{"tenant_id": "<uuid>", "enabled": true}'
+  -d '{"tenant_id": "<uuid>", "enabled": true, "payload": null}'
 ```
 
 ---
@@ -576,18 +591,18 @@ curl -X PATCH http://localhost:5000/api/features/webhooks \
 
 - Four plan tiers: `free`, `starter`, `pro`, `enterprise`
 - Configurable resource limits per plan (users, API calls, storage, projects)
-- Plan upgrade endpoint with automatic flag re-seeding
+- Plan upgrade endpoint with automatic flag re-seeding via `upgrade_flags()`
 - Usage tracking (user count, with placeholder for API call tracking)
 
 #### Backend Integration
 
-Register the billing blueprint:
+Include the billing router:
 
 ```python
-# your_app/__init__.py
-from your_app.billing.routes import billing_bp
+# app/main.py
+from app.api.routers import billing
 
-app.register_blueprint(billing_bp)
+app.include_router(billing.router, prefix="/api/billing", tags=["Billing"])
 ```
 
 #### Plan Limits
@@ -601,7 +616,7 @@ app.register_blueprint(billing_bp)
 
 #### Customizing Plans
 
-Edit `billing/plans.py`:
+Edit `app/core/plans.py`:
 
 ```python
 PLAN_LIMITS = {
@@ -630,18 +645,22 @@ PLAN_FEATURES = {
 #### Enforcing Limits in Your Code
 
 ```python
-from your_app.billing.plans import get_plan_limits
-from your_app.tenants.models import User
+from sqlalchemy import select, func
+from app.core.plans import get_plan_limits
+from app.models.domain import User
 
-def check_user_limit(tenant):
+async def check_user_limit(db, tenant) -> bool:
     plan_name = tenant.plan.value
     limits = get_plan_limits(plan_name)
     max_users = limits['users']
 
     if max_users == -1:
-        return True  # Unlimited
+        return True  # Unlimited (enterprise)
 
-    current_count = User.query.filter_by(tenant_id=tenant.id).count()
+    result = await db.execute(
+        select(func.count(User.id)).where(User.tenant_id == tenant.id)
+    )
+    current_count = result.scalar_one()
     return current_count < max_users
 ```
 
@@ -649,11 +668,11 @@ def check_user_limit(tenant):
 
 ```bash
 # Get current plan, limits, and usage
-curl http://localhost:5000/api/billing/plan \
+curl http://localhost:8000/api/billing/plan \
   -H "Authorization: Bearer <token>"
 
 # Upgrade a tenant (superadmin only)
-curl -X POST http://localhost:5000/api/billing/upgrade \
+curl -X POST http://localhost:8000/api/billing/upgrade \
   -H "Authorization: Bearer <superadmin_token>" \
   -H "Content-Type: application/json" \
   -d '{"tenant_id": "<uuid>", "new_plan": "enterprise"}'
@@ -665,34 +684,34 @@ curl -X POST http://localhost:5000/api/billing/upgrade \
 
 #### What it provides
 
-- Paginated tenant list with user counts, filterable by status and plan
+- Paginated tenant list with user counts, filterable by `status` and `plan`
 - Per-tenant metrics (user count, config count, flag breakdown)
 - Global aggregate metrics (total tenants, total users, plan/status distribution)
 
 #### Backend Integration
 
-Register the admin blueprint:
+Include the admin router:
 
 ```python
-# your_app/__init__.py
-from your_app.admin.routes import admin_bp
+# app/main.py
+from app.api.routers import admin
 
-app.register_blueprint(admin_bp)
+app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 ```
 
 #### API Endpoints
 
 ```bash
 # Paginated tenant list
-curl "http://localhost:5000/api/admin/tenants?page=1&per_page=20&status=active&plan=pro" \
+curl "http://localhost:8000/api/admin/tenants?page=1&per_page=20&status=active&plan=pro" \
   -H "Authorization: Bearer <superadmin_token>"
 
 # Per-tenant metrics
-curl http://localhost:5000/api/admin/tenants/<tenant_id>/metrics \
+curl http://localhost:8000/api/admin/tenants/<tenant_id>/metrics \
   -H "Authorization: Bearer <superadmin_token>"
 
 # Global metrics
-curl http://localhost:5000/api/admin/metrics \
+curl http://localhost:8000/api/admin/metrics \
   -H "Authorization: Bearer <superadmin_token>"
 ```
 
@@ -706,6 +725,23 @@ curl http://localhost:5000/api/admin/metrics \
     "total_users": 23,
     "by_plan": { "free": 2, "starter": 1, "pro": 1, "enterprise": 1 },
     "by_status": { "active": 4, "deleted": 1 }
+  }
+}
+```
+
+**Per-Tenant Metrics:**
+```json
+{
+  "tenant": { "id": "...", "slug": "acme", "plan": "pro", ... },
+  "metrics": {
+    "user_count": 4,
+    "config_count": 3,
+    "feature_flags": {
+      "total": 9,
+      "enabled": 6,
+      "disabled": 3,
+      "flags": [...]
+    }
   }
 }
 ```
@@ -784,6 +820,26 @@ function MyComponent() {
     setTenant,       // (tenant) => void
     setUser,         // (user) => void
   } = useTenantStore();
+}
+```
+
+On app load, call `hydrate()` to restore session state from `localStorage`:
+
+```jsx
+// App.jsx
+import { useEffect } from 'react';
+import useTenantStore from './context/TenantContext';
+
+function App() {
+  const { hydrate, isLoading } = useTenantStore();
+
+  useEffect(() => {
+    hydrate();
+  }, []);
+
+  if (isLoading) return <div>Loading...</div>;
+
+  return <Routes />;
 }
 ```
 
@@ -906,7 +962,10 @@ import SuperadminRoute from './components/SuperadminRoute';
 
 #### Using Docker Compose
 
-Copy the `docker-compose.yml` to your project and adjust paths:
+Copy the `docker-compose.yml` to your project and adjust as needed. Key points:
+
+- `db-init` is a one-shot container that runs `alembic upgrade head && python seed.py` before the backend starts.
+- `backend` and `frontend` both mount their source directories as volumes in development mode.
 
 ```yaml
 version: '3.9'
@@ -937,11 +996,10 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://saas:saas@postgres:5432/saas_bootstrapper
-      FLASK_ENV: production
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-jwt-secret}
       SUPERADMIN_SECRET: ${SUPERADMIN_SECRET:-change-me-superadmin-secret}
     command: >
-      sh -c "flask db upgrade && python seed.py"
+      sh -c "alembic upgrade head && python seed.py"
     restart: "no"
 
   backend:
@@ -954,10 +1012,9 @@ services:
       db-init:
         condition: service_completed_successfully
     ports:
-      - "5000:5000"
+      - "8000:8000"
     environment:
       DATABASE_URL: postgresql://saas:saas@postgres:5432/saas_bootstrapper
-      FLASK_ENV: ${FLASK_ENV:-production}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-jwt-secret}
       SUPERADMIN_SECRET: ${SUPERADMIN_SECRET:-change-me-superadmin-secret}
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
@@ -971,7 +1028,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_API_URL: http://localhost:5000
+      VITE_API_URL: http://localhost:8000
 
 volumes:
   postgres_data:
@@ -1006,14 +1063,13 @@ Any model you create that includes a `tenant_id` column will **automatically** b
 ### Step 1: Create Your Model
 
 ```python
-# your_app/products/models.py
+# app/models/domain.py  (add alongside existing models)
 from sqlalchemy import Column, String, ForeignKey, text
 from sqlalchemy.dialects.postgresql import UUID
-from your_app.extensions import db
-from your_app.models import TimestampMixin, SerializerMixin
+from app.models.base import Base, TimestampMixin, SerializerMixin
 
 
-class Product(db.Model, TimestampMixin, SerializerMixin):
+class Product(Base, TimestampMixin, SerializerMixin):
     __tablename__ = 'products'
 
     id = Column(
@@ -1034,28 +1090,35 @@ class Product(db.Model, TimestampMixin, SerializerMixin):
 ### Step 2: Create a Migration
 
 ```bash
-flask db migrate -m "add products table"
-flask db upgrade
+# From the backend directory
+alembic revision --autogenerate -m "add products table"
+alembic upgrade head
 ```
 
 ### Step 3: Use It in Routes
 
 ```python
-from flask import Blueprint, jsonify, g
-from your_app.auth.decorators import require_tenant
-from your_app.products.models import Product
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.db.session import get_db
+from app.api.dependencies import require_tenant
+from app.models.domain import Product
 
-products_bp = Blueprint('products', __name__, url_prefix='/api/products')
+router = APIRouter(prefix="/api/products", tags=["Products"])
 
-@products_bp.route('/', methods=['GET'])
-@require_tenant
-def list_products():
+@router.get("/")
+async def list_products(
+    claims: dict = Depends(require_tenant),
+    db: AsyncSession = Depends(get_db),
+):
     # RLS automatically filters to the current tenant!
-    products = Product.query.all()
-    return jsonify(products=[p.to_dict() for p in products])
+    result = await db.execute(select(Product))
+    products = result.scalars().all()
+    return {"products": [p.to_dict() for p in products]}
 ```
 
-> **Key point:** You never need to manually add `.filter_by(tenant_id=...)` — the RLS listener does it for you. This is structurally impossible to forget.
+> **Key point:** You never need to manually add `.where(Product.tenant_id == ...)` — the RLS listener does it for you. This is structurally impossible to forget.
 
 ---
 
@@ -1063,102 +1126,78 @@ def list_products():
 
 ### Full App Factory Template
 
-Here's a complete app factory that wires together all the bootstrapper features:
+Here's a complete `main.py` that wires together all the bootstrapper features:
 
 ```python
-# your_app/__init__.py
-from datetime import timedelta
-from flask import Flask
-from your_app.extensions import db, migrate, jwt, cors
+# app/main.py
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import config
+from app.core.middleware import TenantMiddleware
+from app.core.rls import register_rls_listener
+from app.api.routers import auth, tenants, features, admin, billing
 
+app = FastAPI(
+    title="My SaaS App",
+    description="Built on the Multi-Tenant SaaS Bootstrapper",
+    version="1.0.0",
+)
 
-def create_app(config_name='development'):
-    app = Flask(__name__)
-    app.config.from_object(config_by_name[config_name])
+# CORS — must be before TenantMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=config.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    # JWT token expiry
-    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(
-        seconds=app.config.get('JWT_ACCESS_TOKEN_EXPIRES', 86400)
-    )
+# Tenant resolution middleware
+app.add_middleware(TenantMiddleware)
 
-    # Initialize extensions
-    db.init_app(app)
-    migrate.init_app(app, db)
-    jwt.init_app(app)
-    cors.init_app(app, origins=app.config.get('CORS_ORIGINS', ['http://localhost:5173']))
+# Register RLS query interceptor (call once)
+register_rls_listener()
 
-    # Register all blueprints
-    from your_app.auth.routes import auth_bp
-    from your_app.tenants.routes import tenants_bp
-    from your_app.features.routes import features_bp
-    from your_app.admin.routes import admin_bp
-    from your_app.billing.routes import billing_bp
+# Core bootstrapper routers
+app.include_router(auth.router,     prefix="/api/auth",     tags=["Auth"])
+app.include_router(tenants.router,  prefix="/api/tenants",  tags=["Tenants"])
+app.include_router(features.router, prefix="/api/features", tags=["Features"])
+app.include_router(admin.router,    prefix="/api/admin",    tags=["Admin"])
+app.include_router(billing.router,  prefix="/api/billing",  tags=["Billing"])
 
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(tenants_bp)
-    app.register_blueprint(features_bp)
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(billing_bp)
+# Register YOUR custom routers here
+# from app.api.routers import products
+# app.include_router(products.router, prefix="/api/products", tags=["Products"])
 
-    # Register YOUR custom blueprints here
-    # from your_app.products.routes import products_bp
-    # app.register_blueprint(products_bp)
-
-    # Tenant middleware (subdomain + X-Tenant-ID resolution)
-    from your_app.tenants.middleware import register_tenant_middleware
-    register_tenant_middleware(app)
-
-    # RLS query interceptor
-    from your_app.rls import register_rls_listener
-    register_rls_listener()
-
-    # JWT callbacks
-    from your_app.auth.jwt import configure_jwt
-    configure_jwt(app)
-
-    # Import models for Alembic detection
-    with app.app_context():
-        from your_app.tenants import models  # noqa: F401
-
-    # Health check
-    @app.route('/api/health', methods=['GET'])
-    def health():
-        return {'status': 'healthy'}, 200
-
-    return app
+@app.get("/api/health")
+async def health_check():
+    return {"status": "healthy", "service": "saas-bootstrapper-fastapi"}
 ```
 
 ### Error Response Convention
 
-All API errors follow this shape:
+All API errors follow this shape (FastAPI `HTTPException` detail):
 
 ```json
 {
-  "error": "Human-readable message",
-  "code": "MACHINE_CODE"
+  "detail": "Human-readable message"
 }
 ```
 
-Common error codes:
+Common HTTP status codes used in this project:
 
-| Code | HTTP Status | Meaning |
-|---|---|---|
-| `INVALID_INPUT` | 400 | Missing or malformed request body |
-| `AUTH_REQUIRED` | 401 | No token provided |
-| `AUTH_FAILED` | 401 | Invalid credentials |
-| `TOKEN_EXPIRED` | 401 | JWT token has expired |
-| `INVALID_TOKEN` | 401 | Malformed or tampered JWT |
-| `FORBIDDEN` | 403 | Valid token, insufficient access |
-| `TENANT_REQUIRED` | 403 | Route requires tenant context |
-| `SUPERADMIN_REQUIRED` | 403 | Route requires superadmin access |
-| `INSUFFICIENT_ROLE` | 403 | Route requires a specific role |
-| `NOT_FOUND` | 404 | Resource not found |
-| `DUPLICATE_SUBDOMAIN` | 409 | Subdomain already taken |
-| `DUPLICATE_EMAIL` | 409 | Email already registered |
-| `WEAK_PASSWORD` | 400 | Password too short |
-| `INVALID_PLAN` | 400 | Plan name not recognized |
-| `FEATURE_DISABLED` | 403 | Feature flag is disabled |
-| `SERVER_ERROR` | 500 | Unexpected server error |
+| HTTP Status | Meaning |
+|---|---|
+| `400` | Missing or malformed request body / invalid input |
+| `401` | No token provided, invalid credentials, or expired/invalid JWT |
+| `403` | Valid token, insufficient access (role, tenant, or superadmin check failed) |
+| `404` | Resource not found |
+| `409` | Conflict — subdomain or email already taken |
+| `500` | Unexpected server error |
+
+### Database Session
+
+All routes receive an `AsyncSession` via `Depends(get_db)`. The session is provided by `async_session_factory` from `app/db/session.py`, which uses `asyncpg` as the PostgreSQL driver. The `DATABASE_URL` in your `.env` can use either `postgresql://` or `postgresql+asyncpg://` format — the session module normalizes it automatically.
 
 ---
 
@@ -1168,38 +1207,47 @@ Common error codes:
 
 | Issue | Cause | Fix |
 |---|---|---|
-| `TENANT_REQUIRED` on all routes | Tenant middleware can't resolve tenant | Pass `X-Tenant-ID` header in local dev |
-| Queries return empty arrays | RLS is filtering — tenant context not set | Ensure middleware is registered and `g.tenant_id` is set |
-| `AUTH_REQUIRED` error | No `Authorization` header | Include `Bearer <token>` header |
-| `TOKEN_EXPIRED` after 24h | Default JWT expiry is 86400 seconds | Increase `JWT_ACCESS_TOKEN_EXPIRES` in `.env` |
-| Migrations fail | Wrong `DATABASE_URL` | Check `.env` and ensure PostgreSQL is running |
-| `DUPLICATE_SUBDOMAIN` on provision | Subdomain already exists | Choose a unique subdomain |
-| Feature flag not appearing | Flag wasn't seeded | Run `seed_flags(tenant_id, plan)` or re-provision |
+| `403 Tenant context required` on all routes | Tenant middleware can't resolve tenant | Pass `X-Tenant-ID` header in local dev |
+| Queries return empty arrays | RLS is filtering — tenant context not set | Ensure middleware is registered and `set_tenant_id()` is called |
+| `401 Authorization required` | No `Authorization` header | Include `Bearer <token>` in the request |
+| `401 Token has expired` after 24h | Default JWT expiry is 86400 seconds | Increase `JWT_ACCESS_TOKEN_EXPIRES` in `.env` |
+| `401 Invalid token` | Wrong `JWT_SECRET_KEY` between frontend and backend | Ensure both use the same secret |
+| Migrations fail | Wrong `DATABASE_URL` or PostgreSQL not running | Check `.env` and verify `pg_isready` |
+| `409 Subdomain already taken` on provision | Subdomain already exists | Choose a unique subdomain |
+| Feature flag not appearing | Flag wasn't seeded | Call `await seed_flags(db, tenant_id, plan)` or re-provision |
 | Frontend `401` redirect loop | Token expired and no refresh logic | Clear `localStorage` and re-login |
 | Docker `db-init` fails | PostgreSQL not ready | Ensure `healthcheck` is configured on the postgres service |
+| `asyncpg` import error | `asyncpg` not installed | Run `pip install asyncpg` or check `requirements.txt` |
 
 ### Verifying RLS Is Active
 
 ```python
-# Quick test in Flask shell
-flask shell
+# Quick async test — run with:  python -c "import asyncio; from test_rls import main; asyncio.run(main())"
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy import select
+from app.models.domain import User
+from app.core.rls import set_tenant_id, bypass_rls, register_rls_listener
 
->>> from app.rls import set_tenant_id, get_tenant_id, bypass_rls
->>> from app.tenants.models import User
+register_rls_listener()
 
-# Without tenant context — should return no results
->>> User.query.all()
-[]
+async def main():
+    engine = create_async_engine("postgresql+asyncpg://saas:saas@localhost/saas_bootstrapper")
+    Session = async_sessionmaker(engine, expire_on_commit=False)
 
-# With tenant context — should return only that tenant's users
->>> set_tenant_id('your-tenant-uuid')
->>> User.query.all()
-[<User alice@acme.com (owner)>]
+    async with Session() as db:
+        # Without tenant context — returns no results (RLS blocks unscoped queries)
+        result = await db.execute(select(User))
+        print("No context:", result.scalars().all())  # []
 
-# With bypass — should return all users
->>> with bypass_rls():
-...     User.query.all()
-[<User alice@acme.com>, <User bob@other.com>, ...]
+        # With tenant context — returns only that tenant's users
+        set_tenant_id("your-tenant-uuid")
+        result = await db.execute(select(User))
+        print("With tenant:", result.scalars().all())  # [<User alice@acme.com>]
+
+        # With bypass — returns all users
+        with bypass_rls():
+            result = await db.execute(select(User))
+            print("Bypassed:", result.scalars().all())  # All users
 ```
 
 ### Health Check
@@ -1207,8 +1255,20 @@ flask shell
 The bootstrapper includes a built-in health endpoint:
 
 ```bash
-curl http://localhost:5000/api/health
-# → {"status": "healthy", "service": "saas-bootstrapper"}
+curl http://localhost:8000/api/health
+# → {"status": "healthy", "service": "saas-bootstrapper-fastapi"}
+```
+
+The interactive API docs (Swagger UI) are at:
+
+```
+http://localhost:8000/docs
+```
+
+The alternative ReDoc docs are at:
+
+```
+http://localhost:8000/redoc
 ```
 
 ---

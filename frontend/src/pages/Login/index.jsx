@@ -36,7 +36,8 @@ export default function LoginPage() {
         navigate('/dashboard');
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
+      const detail = err.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : 'Login failed. Please check your credentials.');
     } finally {
       setIsLoading(false);
     }

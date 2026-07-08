@@ -103,9 +103,9 @@ const useTenantStore = create((set, get) => ({
     }
 
     try {
-      // Load user profile
+      // Load user profile — /api/auth/me returns the user object directly
       const { data: profileData } = await client.get('/api/auth/me');
-      const user = profileData.user;
+      const user = profileData;
 
       // Load tenant config if we have a tenant_id
       let tenant = null;

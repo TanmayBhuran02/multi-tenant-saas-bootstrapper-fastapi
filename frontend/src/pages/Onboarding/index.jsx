@@ -50,7 +50,9 @@ const PLANS = [
 
 export default function OnboardingWizard() {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
+  // step 0 = superadmin auth gate, steps 1-3 = wizard
+  const [step, setStep] = useState(0);
+  const [adminToken, setAdminToken] = useState('');
   const [selectedPlan, setSelectedPlan] = useState('free');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -64,6 +66,8 @@ export default function OnboardingWizard() {
     getValues,
   } = useForm({
     defaultValues: {
+      adminEmail: '',
+      adminPassword: '',
       displayName: '',
       subdomain: '',
       ownerEmail: '',
@@ -73,6 +77,29 @@ export default function OnboardingWizard() {
   });
 
   const subdomain = watch('subdomain');
+
+  // Step 0: authenticate as superadmin to get a token for provisioning
+  const authenticateAdmin = async () => {
+    setError('');
+    setIsSubmitting(true);
+    try {
+      const res = await client.post('/api/auth/login', {
+        email: getValues('adminEmail'),
+        password: getValues('adminPassword'),
+      });
+      if (!res.data.user?.is_superadmin) {
+        setError('Only superadmins can provision new organizations.');
+        return;
+      }
+      setAdminToken(res.data.access_token);
+      setStep(1);
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : 'Superadmin login failed.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const nextStep = async () => {
     let fieldsToValidate = [];
@@ -90,15 +117,20 @@ export default function OnboardingWizard() {
     setIsSubmitting(true);
 
     try {
-      await client.post('/api/tenants/provision', {
-        display_name: formData.displayName,
-        subdomain: formData.subdomain,
-        plan: selectedPlan,
-        owner_email: formData.ownerEmail,
-        owner_password: formData.ownerPassword,
-      });
+      // Provision using the superadmin token obtained in step 0
+      await client.post(
+        '/api/tenants/provision',
+        {
+          display_name: formData.displayName,
+          subdomain: formData.subdomain,
+          plan: selectedPlan,
+          owner_email: formData.ownerEmail,
+          owner_password: formData.ownerPassword,
+        },
+        { headers: { Authorization: `Bearer ${adminToken}` } }
+      );
 
-      // Login after provisioning
+      // Log in as the new tenant owner
       const loginRes = await client.post('/api/auth/login', {
         email: formData.ownerEmail,
         password: formData.ownerPassword,
@@ -106,13 +138,14 @@ export default function OnboardingWizard() {
 
       localStorage.setItem('access_token', loginRes.data.access_token);
       localStorage.setItem('user', JSON.stringify(loginRes.data.user));
-      if (loginRes.data.user.tenant_id) {
+      if (loginRes.data.user?.tenant_id) {
         localStorage.setItem('tenant_id', loginRes.data.user.tenant_id);
       }
 
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create organization. Please try again.');
+      const detail = err.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : 'Failed to create organization. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -123,29 +156,89 @@ export default function OnboardingWizard() {
       <div className="onboarding-bg-glow" />
 
       <div className="onboarding-container">
-        {/* Progress bar */}
-        <div className="onboarding-progress">
-          {[1, 2, 3].map((s) => (
-            <div key={s} className="onboarding-progress-step">
-              <div className={`progress-dot ${step >= s ? 'active' : ''} ${step > s ? 'completed' : ''}`}>
-                {step > s ? '✓' : s}
-              </div>
-              <span className={`progress-label ${step >= s ? 'active' : ''}`}>
-                {s === 1 ? 'Organization' : s === 2 ? 'Plan' : 'Account'}
-              </span>
-              {s < 3 && <div className={`progress-line ${step > s ? 'active' : ''}`} />}
+        {/* ── Step 0: Superadmin Auth Gate ──────────────── */}
+        {step === 0 && (
+          <div className="onboarding-step animate-scale-in">
+            <div className="step-header">
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🔐</div>
+              <h2>Admin Authorization</h2>
+              <p>Sign in as a superadmin to provision a new organization.</p>
             </div>
-          ))}
-        </div>
 
-        {/* Error */}
-        {error && (
+            {error && (
+              <div className="onboarding-error animate-slide-up">
+                <span>⚠️</span> {error}
+              </div>
+            )}
+
+            <div className="step-body">
+              <div className="input-group">
+                <label className="input-label" htmlFor="adminEmail">Superadmin Email</label>
+                <input
+                  id="adminEmail"
+                  type="email"
+                  className="input"
+                  placeholder="admin@saas.com"
+                  {...register('adminEmail', { required: true })}
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label" htmlFor="adminPassword">Superadmin Password</label>
+                <input
+                  id="adminPassword"
+                  type="password"
+                  className="input"
+                  placeholder="••••••••"
+                  {...register('adminPassword', { required: true })}
+                />
+              </div>
+              <div className="onboarding-summary glass-card" style={{ marginTop: '1rem' }}>
+                <div className="summary-row">
+                  <span>Default superadmin</span>
+                  <strong>admin@saas.com / superadmin123</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="step-actions" style={{ justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-primary btn-lg"
+                onClick={authenticateAdmin}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? <><span className="loading-spinner-sm" /> Verifying...</> : 'Authorize →'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Progress bar (steps 1-3 only) */}
+        {step > 0 && (
+          <div className="onboarding-progress">
+            {[1, 2, 3].map((s) => (
+              <div key={s} className="onboarding-progress-step">
+                <div className={`progress-dot ${step >= s ? 'active' : ''} ${step > s ? 'completed' : ''}`}>
+                  {step > s ? '✓' : s}
+                </div>
+                <span className={`progress-label ${step >= s ? 'active' : ''}`}>
+                  {s === 1 ? 'Organization' : s === 2 ? 'Plan' : 'Account'}
+                </span>
+                {s < 3 && <div className={`progress-line ${step > s ? 'active' : ''}`} />}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Error (steps 1-3) */}
+        {step > 0 && error && (
           <div className="onboarding-error animate-slide-up">
             <span>⚠️</span> {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit(onSubmit)}>
+
           {/* ── Step 1: Organization ────────────────────── */}
           {step === 1 && (
             <div className="onboarding-step animate-slide-up">
