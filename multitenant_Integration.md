@@ -7,9 +7,9 @@ A step-by-step guide for injecting the **Multi-Tenant SaaS Bootstrapper** (FastA
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
-- [Quick Setup (Inject as Dependency)](#quick-setup-inject-as-dependency)
-  - [Backend Injection](#1-backend-injection)
-  - [Frontend Injection](#2-frontend-injection)
+- [Quick Setup (Install as Package)](#quick-setup-install-as-package)
+  - [Backend Installation](#1-backend-installation)
+  - [Frontend Integration](#2-frontend-integration)
   - [Database & Environment](#3-database--environment)
 - [Feature Integration Guide](#feature-integration-guide)
   - [1. Tenant Provisioning & Management](#1-tenant-provisioning--management)
@@ -38,89 +38,43 @@ A step-by-step guide for injecting the **Multi-Tenant SaaS Bootstrapper** (FastA
 
 ---
 
-## Quick Setup (Inject as Dependency)
+## Quick Setup (Install as Package)
 
-### 1. Backend Injection
+### 1. Backend Installation
 
-#### Option A — Git Submodule (recommended for source access)
-
-```bash
-# From your project root
-git submodule add https://github.com/your-org/saas-bootstrapper-fastapi.git lib/saas-bootstrapper
-git submodule update --init --recursive
-```
-
-Then copy the relevant backend modules into your FastAPI app:
+Install the package via `pip` (or add it to your project's dependencies):
 
 ```bash
-# Copy the core multi-tenant app package into your project
-cp -r lib/saas-bootstrapper/backend/app   your_project/backend/app
-
-# Copy migration setup
-cp -r lib/saas-bootstrapper/backend/alembic       your_project/backend/alembic
-cp    lib/saas-bootstrapper/backend/alembic.ini    your_project/backend/alembic.ini
-
-# Copy the seed script
-cp    lib/saas-bootstrapper/backend/seed.py        your_project/backend/seed.py
+# Add to your requirements.txt or install directly
+pip install multi-tenant-bootstrapper
 ```
 
-#### Option B — Direct Copy (simpler, no git history)
+If you are developing or installing from source:
 
 ```bash
-# Clone once and copy what you need
-git clone https://github.com/your-org/saas-bootstrapper-fastapi.git /tmp/saas-bootstrapper
-
-# Copy backend modules
-cp -r /tmp/saas-bootstrapper/backend/app           your_project/backend/app
-cp -r /tmp/saas-bootstrapper/backend/alembic       your_project/backend/alembic
-cp    /tmp/saas-bootstrapper/backend/alembic.ini    your_project/backend/alembic.ini
-cp    /tmp/saas-bootstrapper/backend/seed.py        your_project/backend/seed.py
+# In the cloned directory
+pip install -e .
 ```
 
-#### Install Python Dependencies
+### 2. Frontend Integration
 
-Add these to your `requirements.txt` (or merge with your existing one):
+By default, the package includes the built React frontend. If you want to use it as the default implementation, simply ensure `include_frontend=True` (default) when creating/mounting the application.
 
-```text
-fastapi
-uvicorn[standard]
-sqlalchemy[asyncio]
-asyncpg
-alembic
-pyjwt
-passlib[bcrypt]
-pydantic[email]
-python-dotenv
-pydantic-settings
-```
+If you are building and integrating your own custom frontend:
+1. Pass `include_frontend=False` in `create_app()` or `mount_to_app()`.
+2. Deploy/serve your custom frontend separately.
 
-Then install:
+#### Optional: Re-using Hooks & Components in React
+
+If you want to use the core frontend utilities in your custom React project:
 
 ```bash
-pip install -r requirements.txt
+# Copy context, hooks, and components to your frontend
+SRC=src/multi_tenant_bootstrapper/frontend/src # when working from source
+# OR copy what you need from the frontend/src folder of the repository
 ```
 
----
-
-### 2. Frontend Injection
-
-Copy the relevant frontend modules into your React project:
-
-```bash
-# From the cloned bootstrapper (or submodule path)
-SRC=lib/saas-bootstrapper/frontend/src
-
-cp    $SRC/api/client.js              your_frontend/src/api/client.js
-cp    $SRC/context/TenantContext.jsx   your_frontend/src/context/TenantContext.jsx
-cp -r $SRC/hooks                      your_frontend/src/hooks
-cp    $SRC/components/FeatureGate.jsx  your_frontend/src/components/FeatureGate.jsx
-cp    $SRC/components/FeatureGate.css  your_frontend/src/components/FeatureGate.css
-cp    $SRC/components/PlanBadge.jsx    your_frontend/src/components/PlanBadge.jsx
-cp    $SRC/components/PrivateRoute.jsx your_frontend/src/components/PrivateRoute.jsx
-cp    $SRC/components/SuperadminRoute.jsx your_frontend/src/components/SuperadminRoute.jsx
-```
-
-#### Install npm Dependencies
+Ensure the frontend dependencies are installed in your React project:
 
 ```bash
 npm install axios zustand react-router-dom @tanstack/react-query recharts react-hook-form
@@ -132,42 +86,44 @@ npm install axios zustand react-router-dom @tanstack/react-query recharts react-
 
 #### Create your `.env` file (backend)
 
+All configuration variables are prefixed with `SAAS_` (or can be configured directly in code using `BootstrapperConfig`):
+
 ```bash
 # ─── App ─────────────────────────────────────────────────
-SECRET_KEY=change-me-to-a-random-string
-DEBUG=True
+SAAS_SECRET_KEY=change-me-to-a-random-string
+SAAS_DEBUG=True
 
 # ─── Database ────────────────────────────────────────────
-# Use postgresql:// — the app auto-converts to postgresql+asyncpg://
-DATABASE_URL=postgresql://your_user:your_pass@localhost:5432/your_db
+SAAS_DATABASE_URL=postgresql://your_user:your_pass@localhost:5432/your_db
 
 # ─── JWT ─────────────────────────────────────────────────
-JWT_SECRET_KEY=change-me-to-a-random-jwt-secret
-JWT_ACCESS_TOKEN_EXPIRES=86400
+SAAS_JWT_SECRET_KEY=change-me-to-a-random-jwt-secret
+SAAS_JWT_ACCESS_TOKEN_EXPIRES=86400
 
 # ─── Superadmin ──────────────────────────────────────────
-SUPERADMIN_SECRET=change-me-to-a-random-superadmin-secret
+SAAS_SUPERADMIN_SECRET=change-me-to-a-random-superadmin-secret
 
 # ─── CORS ────────────────────────────────────────────────
-CORS_ORIGINS=http://localhost:5173
-```
-
-#### Create your `.env.local` file (frontend)
-
-```bash
-VITE_API_URL=http://localhost:8000
+SAAS_CORS_ORIGINS=http://localhost:5173
 ```
 
 #### Run Migrations & Seed
 
+1. Copy the migrations folder `src/multi_tenant_bootstrapper/migrations/versions/` into your project's Alembic migrations directory.
+2. Apply the migrations to your database:
+
 ```bash
-cd your_project/backend
-
-# Apply database schema via Alembic
+# Apply migrations using your own project's Alembic setup
 alembic upgrade head
+```
 
-# Seed the default superadmin and demo tenant
-python seed.py
+To seed the default superadmin and demo tenant, you can call the seed function programmatically:
+
+```python
+import asyncio
+from multi_tenant_bootstrapper import run_seed
+
+asyncio.run(run_seed())
 ```
 
 > **Default credentials after seeding:**
@@ -180,8 +136,10 @@ python seed.py
 
 #### Start the Backend (Development)
 
+Start your FastAPI app using `uvicorn`:
+
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 The interactive API docs are available at `http://localhost:8000/docs`.
@@ -204,9 +162,9 @@ The interactive API docs are available at `http://localhost:8000/docs`.
 Include the tenants router in your FastAPI app:
 
 ```python
-# app/main.py
+# main.py
 from fastapi import FastAPI
-from app.api.routers import tenants
+from multi_tenant_bootstrapper.api.routers import tenants
 
 app = FastAPI()
 app.include_router(tenants.router, prefix="/api/tenants", tags=["Tenants"])
@@ -216,9 +174,9 @@ app.include_router(tenants.router, prefix="/api/tenants", tags=["Tenants"])
 
 | File | Purpose |
 |---|---|
-| `app/models/domain.py` | `Tenant`, `TenantConfig`, `User`, `FeatureFlag` SQLAlchemy models |
-| `app/api/routers/tenants.py` | `/api/tenants/provision`, `DELETE`, `config` CRUD, `/users` |
-| `app/core/middleware.py` | `TenantMiddleware` — request-level tenant resolution |
+| `src/multi_tenant_bootstrapper/models/domain.py` | `Tenant`, `TenantConfig`, `User`, `FeatureFlag` SQLAlchemy models |
+| `src/multi_tenant_bootstrapper/api/routers/tenants.py` | `/api/tenants/provision`, `DELETE`, `config` CRUD, `/users` |
+| `src/multi_tenant_bootstrapper/core/middleware.py` | `TenantMiddleware` — request-level tenant resolution |
 
 #### API Endpoints
 
@@ -270,7 +228,7 @@ curl http://localhost:8000/api/tenants/<tenant_id>/users \
 Add `TenantMiddleware` in your app factory (it uses Starlette's `BaseHTTPMiddleware`):
 
 ```python
-# app/main.py
+# main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.middleware import TenantMiddleware
@@ -334,8 +292,8 @@ The middleware's `_SKIP_HOSTS` regex automatically ignores `localhost`, `127.0.0
 Call `register_rls_listener()` once in your app startup (or module import):
 
 ```python
-# app/main.py  (or wherever you initialize the app)
-from app.core.rls import register_rls_listener
+# main.py  (or wherever you initialize the app)
+from multi_tenant_bootstrapper import register_rls_listener
 
 register_rls_listener()
 ```
@@ -349,7 +307,7 @@ register_rls_listener()
 3. **Bypass**: Superadmin routes use `bypass_rls()` to query across tenants:
 
 ```python
-from app.core.rls import bypass_rls
+from multi_tenant_bootstrapper import bypass_rls
 
 # Normal query — automatically filtered to current tenant
 result = await db.execute(select(User))  # Only returns users for the current tenant
@@ -390,8 +348,8 @@ Any model with a `tenant_id` column is **automatically** filtered by RLS. See [A
 Include the auth router and wire the dependency injection:
 
 ```python
-# app/main.py
-from app.api.routers import auth
+# main.py
+from multi_tenant_bootstrapper.api.routers import auth
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 ```
@@ -419,8 +377,8 @@ Use these `Depends()` functions to protect your own routes:
 
 ```python
 from fastapi import APIRouter, Depends
-from app.api.dependencies import require_tenant, superadmin_only, require_role, get_current_user
-from app.models.domain import User
+from multi_tenant_bootstrapper.api.dependencies import require_tenant, superadmin_only, require_role, get_current_user
+from multi_tenant_bootstrapper.models.domain import User
 
 router = APIRouter()
 
@@ -494,8 +452,8 @@ curl -X POST http://localhost:8000/api/auth/register \
 Include the features router:
 
 ```python
-# app/main.py
-from app.api.routers import features
+# main.py
+from multi_tenant_bootstrapper.api.routers import features
 
 app.include_router(features.router, prefix="/api/features", tags=["Features"])
 ```
@@ -516,10 +474,10 @@ app.include_router(features.router, prefix="/api/features", tags=["Features"])
 
 #### Adding Custom Flags
 
-Edit `app/core/flags.py` to add your own flags:
+Edit `src/multi_tenant_bootstrapper/core/flags.py` to add your own flags:
 
 ```python
-# app/core/flags.py
+# src/multi_tenant_bootstrapper/core/flags.py
 
 PLAN_FLAGS = {
     PlanType.free: [
@@ -541,7 +499,7 @@ PLAN_FLAGS = {
 
 ```python
 from sqlalchemy import select
-from app.models.domain import FeatureFlag
+from multi_tenant_bootstrapper.models.domain import FeatureFlag
 
 async def is_flag_enabled(db, tenant_id: str, flag_name: str) -> bool:
     result = await db.execute(
@@ -556,7 +514,7 @@ async def is_flag_enabled(db, tenant_id: str, flag_name: str) -> bool:
 
 # Usage in a route
 from fastapi import HTTPException, Depends
-from app.db.session import get_db
+from multi_tenant_bootstrapper import get_db get_db
 
 @router.get("/webhooks")
 async def webhooks(
@@ -599,8 +557,8 @@ curl -X PATCH http://localhost:8000/api/features/webhooks \
 Include the billing router:
 
 ```python
-# app/main.py
-from app.api.routers import billing
+# main.py
+from multi_tenant_bootstrapper.api.routers import billing
 
 app.include_router(billing.router, prefix="/api/billing", tags=["Billing"])
 ```
@@ -616,7 +574,7 @@ app.include_router(billing.router, prefix="/api/billing", tags=["Billing"])
 
 #### Customizing Plans
 
-Edit `app/core/plans.py`:
+Edit `src/multi_tenant_bootstrapper/core/plans.py`:
 
 ```python
 PLAN_LIMITS = {
@@ -646,8 +604,8 @@ PLAN_FEATURES = {
 
 ```python
 from sqlalchemy import select, func
-from app.core.plans import get_plan_limits
-from app.models.domain import User
+from multi_tenant_bootstrapper.core.plans import get_plan_limits
+from multi_tenant_bootstrapper.models.domain import User
 
 async def check_user_limit(db, tenant) -> bool:
     plan_name = tenant.plan.value
@@ -693,8 +651,8 @@ curl -X POST http://localhost:8000/api/billing/upgrade \
 Include the admin router:
 
 ```python
-# app/main.py
-from app.api.routers import admin
+# main.py
+from multi_tenant_bootstrapper.api.routers import admin
 
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 ```
@@ -1063,10 +1021,10 @@ Any model you create that includes a `tenant_id` column will **automatically** b
 ### Step 1: Create Your Model
 
 ```python
-# app/models/domain.py  (add alongside existing models)
+# src/multi_tenant_bootstrapper/models/domain.py  (add alongside existing models)
 from sqlalchemy import Column, String, ForeignKey, text
 from sqlalchemy.dialects.postgresql import UUID
-from app.models.base import Base, TimestampMixin, SerializerMixin
+from multi_tenant_bootstrapper import Base, TimestampMixin, SerializerMixin
 
 
 class Product(Base, TimestampMixin, SerializerMixin):
@@ -1101,9 +1059,9 @@ alembic upgrade head
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.db.session import get_db
-from app.api.dependencies import require_tenant
-from app.models.domain import Product
+from multi_tenant_bootstrapper import get_db
+from multi_tenant_bootstrapper.api.dependencies import require_tenant
+from multi_tenant_bootstrapper.models.domain import Product
 
 router = APIRouter(prefix="/api/products", tags=["Products"])
 
@@ -1126,52 +1084,50 @@ async def list_products(
 
 ### Full App Factory Template
 
-Here's a complete `main.py` that wires together all the bootstrapper features:
+Using the **Standalone App Factory** to configure all core routers, database connections, and middleware automatically:
 
 ```python
-# app/main.py
+# main.py
+from multi_tenant_bootstrapper import create_app, BootstrapperConfig
+
+# 1. Custom settings config
+config = BootstrapperConfig(
+    DATABASE_URL="postgresql+asyncpg://saas:saas@localhost:5432/saas_bootstrapper",
+    JWT_SECRET_KEY="your-custom-jwt-secret",
+    # Overrides can be supplied directly if desired:
+    # PLAN_LIMITS={...},
+)
+
+# 2. Instantiate standalone app
+app = create_app(
+    config=config,
+    title="My Custom SaaS App",
+    include_frontend=True,  # Mount static React assets at root /
+)
+```
+
+Alternatively, to **Mount into an existing FastAPI application**:
+
+```python
+# main.py
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from app.core.config import config
-from app.core.middleware import TenantMiddleware
-from app.core.rls import register_rls_listener
-from app.api.routers import auth, tenants, features, admin, billing
+from multi_tenant_bootstrapper import mount_to_app, BootstrapperConfig
 
-app = FastAPI(
-    title="My SaaS App",
-    description="Built on the Multi-Tenant SaaS Bootstrapper",
-    version="1.0.0",
+# Existing project application
+app = FastAPI(title="My Host App")
+
+# Customize configuration
+config = BootstrapperConfig(
+    DATABASE_URL="postgresql+asyncpg://...",
 )
 
-# CORS — must be before TenantMiddleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=config.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+# Mount all bootstrapper routers under prefix "/saas"
+mount_to_app(
+    app,
+    config=config,
+    prefix="/saas",
+    include_frontend=False,  # Use custom frontend serving
 )
-
-# Tenant resolution middleware
-app.add_middleware(TenantMiddleware)
-
-# Register RLS query interceptor (call once)
-register_rls_listener()
-
-# Core bootstrapper routers
-app.include_router(auth.router,     prefix="/api/auth",     tags=["Auth"])
-app.include_router(tenants.router,  prefix="/api/tenants",  tags=["Tenants"])
-app.include_router(features.router, prefix="/api/features", tags=["Features"])
-app.include_router(admin.router,    prefix="/api/admin",    tags=["Admin"])
-app.include_router(billing.router,  prefix="/api/billing",  tags=["Billing"])
-
-# Register YOUR custom routers here
-# from app.api.routers import products
-# app.include_router(products.router, prefix="/api/products", tags=["Products"])
-
-@app.get("/api/health")
-async def health_check():
-    return {"status": "healthy", "service": "saas-bootstrapper-fastapi"}
 ```
 
 ### Error Response Convention
@@ -1197,7 +1153,7 @@ Common HTTP status codes used in this project:
 
 ### Database Session
 
-All routes receive an `AsyncSession` via `Depends(get_db)`. The session is provided by `async_session_factory` from `app/db/session.py`, which uses `asyncpg` as the PostgreSQL driver. The `DATABASE_URL` in your `.env` can use either `postgresql://` or `postgresql+asyncpg://` format — the session module normalizes it automatically.
+All routes receive an `AsyncSession` via `Depends(get_db)`. The session is provided by `multi_tenant_bootstrapper/db/session.py`, which uses `asyncpg` as the PostgreSQL driver. The `DATABASE_URL` in your `.env` can use either `postgresql://` or `postgresql+asyncpg://` format — the session module normalizes it automatically.
 
 ---
 
@@ -1225,8 +1181,8 @@ All routes receive an `AsyncSession` via `Depends(get_db)`. The session is provi
 # Quick async test — run with:  python -c "import asyncio; from test_rls import main; asyncio.run(main())"
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy import select
-from app.models.domain import User
-from app.core.rls import set_tenant_id, bypass_rls, register_rls_listener
+from multi_tenant_bootstrapper.models.domain import User
+from multi_tenant_bootstrapper import set_tenant_id, bypass_rls, register_rls_listener
 
 register_rls_listener()
 
