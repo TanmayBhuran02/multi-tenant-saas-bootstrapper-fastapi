@@ -1,53 +1,70 @@
-# Multi-Tenant SaaS Bootstrapper
+# Multi-Tenant SaaS Bootstrapper (FastAPI)
 
-A production-grade multi-tenant SaaS starter kit built with **Python Flask**, **PostgreSQL**, and **React (Vite + React Router v6)**. Ships with tenant provisioning, subdomain-based routing, row-level security, feature flags, plan/billing management, and a superadmin panel — all wired together and ready to extend.
+A production-grade, plug-and-play multi-tenant SaaS bootstrapper built with **FastAPI**, **PostgreSQL** (asyncpg + SQLAlchemy 2.0), and **React (Vite + React Router v6)**.
+
+Packaged as an installable, PEP 621-compliant Python library (`multi-tenant-bootstrapper`) that can run as a **standalone SaaS application** or be **mounted into any existing FastAPI project**.
 
 ---
 
 ## Table of contents
 
+- [Key features](#key-features)
 - [Architecture overview](#architecture-overview)
 - [Prerequisites](#prerequisites)
-- [Getting started](#getting-started)
+- [Installation & Quick start](#installation--quick-start)
+  - [1. Standalone application](#1-standalone-application)
+  - [2. Mount into an existing FastAPI app](#2-mount-into-an-existing-fastapi-app)
 - [Environment variables](#environment-variables)
-- [Database setup](#database-setup)
+- [Database setup & migrations](#database-setup--migrations)
 - [Running the project](#running-the-project)
 - [Project structure](#project-structure)
-- [API reference](#api-reference)
+- [API reference & Docs](#api-reference--docs)
 - [Plans & feature flags](#plans--feature-flags)
-- [Multi-tenancy & RLS](#multi-tenancy--rls)
+- [Multi-tenancy & Row-Level Security (RLS)](#multi-tenancy--row-level-security-rls)
 - [Frontend](#frontend)
-- [Docker](#docker)
 - [Testing](#testing)
 - [Conventions](#conventions)
+
+---
+
+## Key features
+
+- **Dual-mode usage**: Run standalone out-of-the-box or mount into an existing FastAPI application with one line of code.
+- **Subdomain & header routing**: Automatic tenant resolution from host headers (`subdomain.yourdomain.com`) or fallback `X-Tenant-ID` header.
+- **Transparent Row-Level Security (RLS)**: ContextVar-based tenant tracking with automatic SQLAlchemy query interception—no manual `WHERE tenant_id = :id` required.
+- **FastAPI auth & RBAC**: JWT tokens with role-based dependencies (`require_tenant`, `superadmin_only`, `require_role`).
+- **Feature flag engine**: Tier-based flag provisioning (`free`, `starter`, `pro`, `enterprise`) with per-tenant overrides.
+- **Plan & billing management**: Plan limits, tiers, feature gating, and upgrade endpoints.
+- **Modern async stack**: Fully asynchronous with FastAPI, SQLAlchemy 2.0 (asyncio + asyncpg), and Pydantic v2.
+- **100% test coverage**: 122 pytest unit & integration tests against real PostgreSQL with automatic cascade isolation.
 
 ---
 
 ## Architecture overview
 
 ```
-Browser (acme.yoursaas.com)
+Browser / API Client (acme.yoursaas.com)
         │
         ▼
-┌───────────────────────────────┐
-│  Tenant context middleware    │  Reads Host header → looks up subdomain
-│  (app/tenants/middleware.py)  │  → sets g.tenant + ContextVar
-└──────────────┬────────────────┘
-               │
-┌──────────────▼────────────────┐
-│  JWT auth layer               │  Verifies token, extracts tenant_id,
-│  (app/auth/)                  │  role, is_superadmin
-└──────────────┬────────────────┘
-               │
-┌──────────────▼────────────────┐
-│  RLS query interceptor        │  Auto-injects WHERE tenant_id = X
-│  (app/rls/events.py)          │  on every SQLAlchemy query
-└──────────────┬────────────────┘
-               │
-┌──────────────▼────────────────┐
-│  PostgreSQL (shared schema)   │  Single DB, all tenants in the same
-│                               │  tables, isolated by tenant_id column
-└───────────────────────────────┘
+┌───────────────────────────────────────┐
+│  TenantContextMiddleware              │  Reads Host header → extracts subdomain
+│  (core/middleware.py)                 │  → sets ContextVar tenant_id
+└──────────────────┬────────────────────┘
+                   │
+┌──────────────────▼────────────────────┐
+│  FastAPI Dependencies (JWT / RBAC)    │  Validates token, extracts tenant_id,
+│  (api/dependencies.py)                │  role, is_superadmin claims
+└──────────────────┬────────────────────┘
+                   │
+┌──────────────────▼────────────────────┐
+│  RLS Query Interceptor                │  SQLAlchemy `before_compile` hook auto-injects
+│  (core/rls.py)                        │  `WHERE tenant_id = current_tenant`
+└──────────────────┬────────────────────┘
+                   │
+┌──────────────────▼────────────────────┐
+│  PostgreSQL (Shared Schema)           │  Single async DB, all tenants in shared
+│  (asyncpg driver)                     │  tables, strictly isolated by tenant_id
+└───────────────────────────────────────┘
 ```
 
 ---
@@ -55,446 +72,329 @@ Browser (acme.yoursaas.com)
 ## Prerequisites
 
 - Python 3.12+
-- Node.js 18+
 - PostgreSQL 15+
-- Docker & Docker Compose (optional but recommended)
+- Node.js 18+ (for frontend)
+- Docker & Docker Compose (optional)
 
 ---
 
-## Getting started
+## Installation & Quick start
 
-### 1. Clone the repository
+### 1. Standalone application
 
-```bash
-git clone https://github.com/your-org/saas-bootstrapper.git
-cd saas-bootstrapper
-```
-
-### 2. Backend setup
+Clone repository and install dependencies:
 
 ```bash
-cd backend
+git clone https://github.com/your-org/multi-tenant-saas-bootstrapper-fastapi.git
+cd multi-tenant-saas-bootstrapper-fastapi
+
+# Set up virtual environment
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env            # then fill in your values
+venv\Scripts\activate          # Linux/macOS: source venv/bin/activate
+
+# Install package with development dependencies
+pip install -e ".[dev]"
 ```
 
-### 3. Frontend setup
+Run standalone server with Python:
+
+```python
+from multi_tenant_bootstrapper import create_app
+
+app = create_app()
+```
+
+Or start with Uvicorn:
 
 ```bash
-cd frontend
-npm install
-cp .env.example .env.local      # then fill in your values
+uvicorn multi_tenant_bootstrapper.app_factory:create_app --factory --reload --port 8000
+```
+
+### 2. Mount into an existing FastAPI app
+
+Install as a dependency in your FastAPI project:
+
+```bash
+pip install multi-tenant-bootstrapper
+```
+
+Mount into your application:
+
+```python
+from fastapi import FastAPI
+from multi_tenant_bootstrapper import mount_to_app, BootstrapperConfig
+
+app = FastAPI(title="My Platform")
+
+# Configure bootstrapper
+config = BootstrapperConfig(
+    DATABASE_URL="postgresql+asyncpg://postgres:secret@localhost:5432/my_saas_db",
+    JWT_SECRET_KEY="your-production-jwt-secret-at-least-32-bytes",
+)
+
+# Mount bootstrapper routes, middleware, and database hooks
+mount_to_app(app, config=config, prefix="/api")
 ```
 
 ---
 
 ## Environment variables
 
-### Backend (`backend/.env`)
+Configure using environment variables or a `.env` file (supports `SAAS_` prefix or raw names):
 
-| Variable | Required | Description | Example |
-|---|---|---|---|
-| `DATABASE_URL` | ✅ | PostgreSQL connection string | `postgresql://user:pass@localhost:5432/saas_db` |
-| `JWT_SECRET_KEY` | ✅ | Secret used to sign JWT tokens | `a-long-random-string` |
-| `SUPERADMIN_SECRET` | ✅ | Token/password for bootstrapping the first superadmin | `super-secret-value` |
-| `FLASK_ENV` | ✅ | `development`, `production`, or `testing` | `development` |
-| `FLASK_APP` | ✅ | Entry point for Flask CLI | `run.py` |
-
-### Frontend (`frontend/.env.local`)
-
-| Variable | Required | Description | Example |
-|---|---|---|---|
-| `VITE_API_URL` | ✅ | Base URL of the Flask backend | `http://localhost:5000` |
+| Variable | Required | Default | Description | Example |
+|---|---|---|---|---|
+| `SAAS_DATABASE_URL` / `DATABASE_URL` | ✅ | - | PostgreSQL asyncpg URL | `postgresql+asyncpg://user:pass@localhost:5432/saas_db` |
+| `SAAS_JWT_SECRET_KEY` / `JWT_SECRET_KEY` | ✅ | - | Secret for signing JWTs (32+ chars) | `your-32-byte-secret-key-goes-here` |
+| `SAAS_SECRET_KEY` / `SECRET_KEY` | - | `""` | General application secret key | `super-secret-random-key` |
+| `SAAS_SUPERADMIN_SECRET` / `SUPERADMIN_SECRET`| ✅ | - | Secret for bootstrapping superadmins | `admin-bootstrap-secret` |
+| `SAAS_CORS_ORIGINS` / `CORS_ORIGINS` | - | `*` | Allowed CORS origins (comma-separated)| `http://localhost:5173,https://app.domain.com` |
+| `SAAS_BASE_DOMAIN` / `BASE_DOMAIN` | - | `localhost` | Base domain for subdomain resolution | `yoursaas.com` |
+| `SAAS_DEBUG` / `DEBUG` | - | `false` | Enable debug logs & autoreload | `true` |
 
 ---
 
-## Database setup
+## Database setup & migrations
+
+### Database migrations (Alembic)
+
+Run migrations against your configured database:
 
 ```bash
-cd backend
-
-# Run migrations
-flask db upgrade
-
-# (First time only) seed a superadmin user
-flask seed-superadmin --email admin@yoursaas.com --password changeme
+alembic upgrade head
 ```
 
-To create a new migration after changing models:
+Create a new migration revision:
 
 ```bash
-flask db migrate -m "describe your change"
-flask db upgrade
+alembic revision --autogenerate -m "Add new column"
+alembic upgrade head
+```
+
+### Seeding initial data
+
+Seed default system roles and create initial superadmin:
+
+```bash
+python -m multi_tenant_bootstrapper.seed
+```
+
+Or seed programmatically:
+
+```python
+import asyncio
+from multi_tenant_bootstrapper.seed import run_seed
+
+asyncio.run(run_seed(admin_email="admin@yoursaas.com", admin_password="ChangeMe123!"))
 ```
 
 ---
 
 ## Running the project
 
-### Development (without Docker)
+### Development
 
 ```bash
-# Terminal 1 — backend
-cd backend
-source venv/bin/activate
-flask run --port 5000
+# Terminal 1 — Backend API
+uvicorn multi_tenant_bootstrapper.app_factory:create_app --factory --reload --port 8000
 
-# Terminal 2 — frontend
+# Terminal 2 — React Frontend
 cd frontend
+npm install
 npm run dev
 ```
 
-### With Docker Compose
-
-```bash
-docker-compose up --build
-```
-
-Services started:
-
-| Service | URL |
-|---|---|
-| Backend API | `http://localhost:5000` |
-| Frontend | `http://localhost:5173` |
-| PostgreSQL | `localhost:5432` |
-
-The `db-init` service runs `flask db upgrade` automatically on first start.
+Interactive Swagger API docs available at: **`http://localhost:8000/docs`**  
+ReDoc available at: **`http://localhost:8000/redoc`**
 
 ---
 
 ## Project structure
 
 ```
-saas-bootstrapper/
-├── backend/
-│   ├── app/
-│   │   ├── __init__.py          # App factory: create_app()
-│   │   ├── admin/
-│   │   │   └── routes.py        # Superadmin-only aggregate endpoints
-│   │   ├── auth/
-│   │   │   ├── jwt.py           # JWT setup and claims
-│   │   │   └── decorators.py    # @require_tenant, @superadmin_only
-│   │   ├── billing/
-│   │   │   ├── plans.py         # PLAN_LIMITS dict
-│   │   │   └── routes.py        # /api/billing endpoints
-│   │   ├── features/
-│   │   │   ├── flags.py         # PLAN_FLAGS dict + seed_flags()
-│   │   │   └── routes.py        # /api/features endpoints
-│   │   ├── rls/
-│   │   │   └── events.py        # SQLAlchemy RLS query interceptor
-│   │   └── tenants/
-│   │       ├── middleware.py    # Tenant context middleware
-│   │       ├── models.py        # Tenant, TenantConfig, User, FeatureFlag
-│   │       └── routes.py        # /api/tenants endpoints
-│   ├── migrations/              # Alembic migration files
-│   ├── config.py                # Dev / Prod / Testing config classes
-│   ├── requirements.txt
-│   └── run.py
-│
-├── frontend/
-│   ├── src/
-│   │   ├── api/
-│   │   │   └── client.js        # Axios instance with interceptors
-│   │   ├── context/
-│   │   │   └── TenantContext.jsx
-│   │   ├── hooks/
-│   │   │   ├── useTenant.js
-│   │   │   ├── useFeatureFlag.js
-│   │   │   └── useBilling.js
-│   │   ├── pages/
-│   │   │   ├── Dashboard/
-│   │   │   ├── Onboarding/
-│   │   │   └── Superadmin/
-│   │   ├── components/
-│   │   │   ├── FeatureGate.jsx
-│   │   │   └── PlanBadge.jsx
-│   │   └── App.jsx              # Routes + guards
-│   ├── index.html
-│   └── vite.config.js
-│
-├── docker-compose.yml
+multi-tenant-saas-bootstrapper-fastapi/
+├── src/multi_tenant_bootstrapper/    # Core Python package
+│   ├── __init__.py                  # Public exports (create_app, mount_to_app, models, etc.)
+│   ├── app_factory.py               # Application factory & router mounter
+│   ├── config.py                    # Pydantic Settings configuration (BootstrapperConfig)
+│   ├── seed.py                      # Database seeder CLI & functions
+│   ├── api/
+│   │   ├── dependencies.py          # FastAPI dependencies (auth, tenant, roles)
+│   │   └── routers/
+│   │       ├── admin.py             # Superadmin metrics & aggregate endpoints
+│   │       ├── auth.py              # Login, register, profile
+│   │       ├── billing.py           # Plan limits, tiers, upgrades
+│   │       ├── features.py          # Feature flag evaluation & toggling
+│   │       └── tenants.py           # Tenant provisioning, config, deletion
+│   ├── core/
+│   │   ├── flags.py                 # Feature flag definitions & seeding logic
+│   │   ├── middleware.py            # Subdomain & tenant context middleware
+│   │   ├── plans.py                 # Plan definitions, limits, and features
+│   │   ├── rls.py                   # ContextVar RLS state & SQLAlchemy compiler hook
+│   │   └── security.py              # Password hashing (bcrypt) & JWT handling
+│   ├── db/
+│   │   └── session.py               # Async engine, sessionmaker, & get_db dependency
+│   ├── migrations/                  # Alembic migration scripts
+│   ├── models/
+│   │   ├── base.py                  # Declarative base & reusable mixins
+│   │   └── domain.py                # Tenant, User, TenantConfig, FeatureFlag
+│   └── schemas/                     # Pydantic v2 request/response schemas
+├── frontend/                        # React SPA (Vite + Tailwind/CSS + React Router v6)
+├── tests/                           # Pytest test suite (122 tests)
+│   ├── conftest.py                  # Async PostgreSQL session & autouse table cleaner
+│   ├── test_config.py               # Configuration tests
+│   ├── test_core_*.py               # Middleware, RLS, flags, plans, security tests
+│   ├── test_dependencies.py         # Dependency injection tests
+│   ├── test_models.py               # Model serialization & constraint tests
+│   ├── test_router_*.py             # Integration tests for all routers
+│   └── test_schemas.py              # Schema validation tests
+├── pyproject.toml                   # PEP 621 package build config
 └── README.md
 ```
 
 ---
 
-## API reference
+## API reference & Docs
 
-All endpoints return JSON. Errors follow the shape:
+Full interactive API documentation is generated automatically by FastAPI at `/docs`.
 
-```json
-{ "error": "Human-readable message", "code": "MACHINE_CODE" }
-```
-
-All UUIDs are returned as strings.
-
-### Auth
+### Auth (`/api/auth`)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/auth/login` | None | Returns a JWT token |
-| `POST` | `/api/auth/refresh` | Bearer token | Refreshes an expiring token |
+| `POST` | `/api/auth/register` | Optional | Register a user |
+| `POST` | `/api/auth/login` | None | Login with email and password, returns JWT |
+| `GET` | `/api/auth/me` | Bearer Token | Get current authenticated user profile |
 
-**Login example:**
-```bash
-curl -X POST http://localhost:5000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email": "alice@acme.com", "password": "secret"}'
-```
-
-Response:
-```json
-{ "access_token": "<jwt>", "tenant_id": "uuid-...", "role": "owner" }
-```
-
----
-
-### Tenants
+### Tenants (`/api/tenants`)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/tenants/provision` | Superadmin | Create a new tenant + owner user |
-| `DELETE` | `/api/tenants/:tenant_id` | Superadmin | Soft-delete a tenant |
-| `GET` | `/api/tenants/:tenant_id/config` | Tenant member | Get non-secret config entries |
-| `PATCH` | `/api/tenants/:tenant_id/config` | Owner / Admin | Upsert a config entry |
+| `POST` | `/api/tenants/provision` | Superadmin | Provision a new tenant and owner user |
+| `DELETE`| `/api/tenants/{tenant_id}` | Superadmin | Delete / deactivate tenant |
+| `GET` | `/api/tenants/{tenant_id}/config` | Tenant Member | Get tenant configuration |
+| `PUT` | `/api/tenants/{tenant_id}/config` | Tenant Owner | Upsert tenant configuration key |
+| `GET` | `/api/tenants/{tenant_id}/users` | Tenant Member | List users belonging to tenant |
 
-**Provision a tenant:**
-```bash
-curl -X POST http://localhost:5000/api/tenants/provision \
-  -H "Authorization: Bearer <superadmin_token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "display_name": "Acme Corp",
-    "subdomain": "acme",
-    "plan": "pro",
-    "owner_email": "alice@acme.com",
-    "owner_password": "secure-password"
-  }'
-```
-
-**Soft-delete a tenant:**
-```bash
-curl -X DELETE http://localhost:5000/api/tenants/<tenant_id> \
-  -H "Authorization: Bearer <superadmin_token>"
-```
-Returns `204 No Content`. The tenant row is not removed — `status` is set to `deleted`.
-
-**Upsert a config entry:**
-```bash
-curl -X PATCH http://localhost:5000/api/tenants/<tenant_id>/config \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"key": "theme_color", "value": "#6366f1", "is_secret": false}'
-```
-
----
-
-### Feature flags
+### Features (`/api/features`)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/features` | Tenant member | List all flags for the current tenant |
-| `PATCH` | `/api/features/:flag_name` | Superadmin | Toggle a flag for a specific tenant |
+| `GET` | `/api/features` | Tenant Member | List all feature flags for current tenant |
+| `POST` | `/api/features/toggle` | Superadmin | Enable/disable a feature flag for a tenant |
 
-**List flags:**
-```bash
-curl http://localhost:5000/api/features \
-  -H "Authorization: Bearer <token>" \
-  -H "X-Tenant-ID: <tenant_id>"    # local dev only
-```
-
-**Toggle a flag:**
-```bash
-curl -X PATCH http://localhost:5000/api/features/webhooks \
-  -H "Authorization: Bearer <superadmin_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"tenant_id": "<uuid>", "enabled": true}'
-```
-
----
-
-### Billing
+### Billing (`/api/billing`)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/billing/plan` | Tenant member | Current plan, limits, and usage |
-| `POST` | `/api/billing/upgrade` | Superadmin | Upgrade a tenant to a higher plan |
+| `GET` | `/api/billing/plan` | Tenant Member | Get current plan details and limits |
+| `POST` | `/api/billing/upgrade` | Superadmin | Upgrade or change tenant plan |
 
-**Upgrade a tenant:**
-```bash
-curl -X POST http://localhost:5000/api/billing/upgrade \
-  -H "Authorization: Bearer <superadmin_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"tenant_id": "<uuid>", "new_plan": "enterprise"}'
-```
+### Admin (`/api/admin`)
 
----
-
-### Admin
-
-All routes require a superadmin token.
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/admin/tenants` | Paginated tenant list with user counts |
-| `GET` | `/api/admin/tenants/:id/metrics` | Per-tenant metrics |
-| `GET` | `/api/admin/metrics` | Aggregated metrics across all tenants |
-
-**Paginated tenant list:**
-```bash
-curl "http://localhost:5000/api/admin/tenants?page=1&per_page=20" \
-  -H "Authorization: Bearer <superadmin_token>"
-```
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/admin/tenants` | Superadmin | List all tenants across system |
+| `GET` | `/api/admin/metrics` | Superadmin | Global platform metrics |
+| `GET` | `/api/admin/tenants/{tenant_id}/metrics` | Superadmin | Metrics for specific tenant |
 
 ---
 
 ## Plans & feature flags
 
-### Plan tiers
+Four tiers supported out of the box: `free`, `starter`, `pro`, `enterprise`.
 
-| Plan | Max users | API calls/month |
-|---|---|---|
-| `free` | 3 | 1,000 |
-| `starter` | 10 | 10,000 |
-| `pro` | 50 | 100,000 |
-| `enterprise` | Unlimited | Unlimited |
+Plan limits and flags are defined in `src/multi_tenant_bootstrapper/core/plans.py`:
 
-### Default flags per plan
-
-| Flag | Free | Starter | Pro | Enterprise |
-|---|---|---|---|---|
-| `basic_dashboard` | ✅ | ✅ | ✅ | ✅ |
-| `csv_export` | | ✅ | ✅ | ✅ |
-| `api_access` | | ✅ | ✅ | ✅ |
-| `advanced_analytics` | | | ✅ | ✅ |
-| `webhooks` | | | ✅ | ✅ |
-| `sso` | | | ✅ | ✅ |
-| `audit_logs` | | | | ✅ |
-| `custom_domain` | | | | ✅ |
-| `dedicated_support` | | | | ✅ |
-
-Upgrading a plan re-seeds new flags automatically. Manually toggled flags are never removed during an upgrade.
+```python
+PLAN_LIMITS = {
+    PlanType.free: {"max_users": 3, "max_projects": 1, "storage_mb": 100},
+    PlanType.starter: {"max_users": 10, "max_projects": 5, "storage_mb": 1000},
+    PlanType.pro: {"max_users": 50, "max_projects": 25, "storage_mb": 10000},
+    PlanType.enterprise: {"max_users": -1, "max_projects": -1, "storage_mb": -1},
+}
+```
 
 ---
 
-## Multi-tenancy & RLS
+## Multi-tenancy & Row-Level Security (RLS)
 
-This project uses **shared schema** multi-tenancy. Every tenant-scoped table has a `tenant_id` UUID column. Data isolation is enforced at the ORM layer — not in individual route handlers — so it's structurally impossible to forget a filter.
+All tenant-scoped models inherit from `Base` and include a `tenant_id` column:
 
-**How it works:**
+```python
+from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
+from multi_tenant_bootstrapper.models.base import Base, TimestampMixin, SerializerMixin
 
-1. `app/tenants/middleware.py` reads the `Host` header on every request, looks up the subdomain, and stores the `tenant_id` in a `ContextVar`.
-2. `app/rls/events.py` listens on the SQLAlchemy `do_orm_execute` event and automatically appends `.where(Model.tenant_id == get_tenant_id())` to every query on tenant-scoped models.
-3. Superadmin routes activate `bypass_rls()` (a context manager) to query across all tenants.
+class Project(Base, TimestampMixin, SerializerMixin):
+    __tablename__ = "projects"
 
-**Local development** — pass `X-Tenant-ID: <uuid>` as a request header instead of relying on subdomain DNS:
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+```
 
-```bash
-curl http://localhost:5000/api/features \
-  -H "Authorization: Bearer <token>" \
-  -H "X-Tenant-ID: <tenant_uuid>"
+The bootstrapper automatically registers an ORM query compilation listener (`register_rls_listener`). Every query executed automatically filters `WHERE tenant_id = <current_tenant_id>`.
+
+To execute operations across tenants (e.g., admin tasks or system jobs), use the context manager:
+
+```python
+from multi_tenant_bootstrapper.core.rls import bypass_rls
+
+with bypass_rls():
+    # RLS filter suppressed in this block
+    all_projects = await db.execute(select(Project))
 ```
 
 ---
 
 ## Frontend
 
-### Key hooks
-
-```jsx
-const { tenant, user, plan } = useTenant();
-
-const hasWebhooks = useFeatureFlag('webhooks');  // → boolean
-
-const { plan, limits, upgrade } = useBilling();
-```
-
-### Feature gating in components
-
-```jsx
-import FeatureGate from '@/components/FeatureGate';
-
-<FeatureGate flagName="advanced_analytics">
-  <AdvancedAnalytics />
-</FeatureGate>
-
-// With a fallback:
-<FeatureGate flagName="webhooks" fallback={<UpgradePrompt />}>
-  <WebhooksConfig />
-</FeatureGate>
-```
-
-### Plan badge
-
-```jsx
-import PlanBadge from '@/components/PlanBadge';
-
-<PlanBadge plan="pro" />
-// Renders a colored badge: free=gray, starter=blue, pro=purple, enterprise=gold
-```
-
-### Routes
-
-| Path | Component | Guard |
-|---|---|---|
-| `/` | Redirect | Redirects to `/onboarding` or `/dashboard` |
-| `/onboarding` | `OnboardingWizard` | None |
-| `/login` | `LoginPage` | None |
-| `/dashboard` | `Dashboard` | `PrivateRoute` (valid JWT) |
-| `/superadmin` | `SuperadminPanel` | `SuperadminRoute` (is_superadmin claim) |
-
----
-
-## Docker
-
-```yaml
-# docker-compose.yml services
-postgres:   postgres:15, persistent volume
-backend:    python:3.12-slim, runs Flask
-db-init:    runs `flask db upgrade` on first start
-frontend:   node:18-alpine, runs Vite dev server
-```
+The React frontend (in `frontend/`) connects seamlessly:
 
 ```bash
-# Build and start everything
-docker-compose up --build
-
-# Run in background
-docker-compose up -d
-
-# View backend logs
-docker-compose logs -f backend
-
-# Tear down (preserves DB volume)
-docker-compose down
-
-# Tear down and wipe the database
-docker-compose down -v
+cd frontend
+npm install
+npm run dev
 ```
+
+Provides:
+- Tenant onboarding wizard (`/onboarding`)
+- Tenant login & dashboard (`/login`, `/dashboard`)
+- Superadmin management panel (`/superadmin`)
+- Reusable hooks & context (`TenantContext`, `useFeatureFlag`, `useTenant`)
 
 ---
 
 ## Testing
 
+The test suite runs against PostgreSQL using `asyncpg` with automatic cascade table cleanup after every test:
+
 ```bash
-cd backend
-pytest                          # run all tests
-pytest -k "test_tenant"         # filter by name
-pytest --cov=app                # with coverage report
+# Run all tests
+pytest
+
+# Run tests with short summary
+pytest -q
+
+# Run specific test suite
+pytest tests/test_router_tenants.py
 ```
 
-Set `FLASK_ENV=testing` to use `TestingConfig`, which points to a separate test database and disables JWT expiry checks.
+Configuration in `pyproject.toml` automatically manages async test lifecycle:
+```toml
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+```
 
 ---
 
 ## Conventions
 
-- All Flask routes return JSON. No HTML responses.
-- Every model exposes a `to_dict()` method. No raw SQLAlchemy objects in responses.
-- No raw SQL anywhere — SQLAlchemy ORM only (migrations use Alembic SQL where needed).
-- UUIDs are always returned as strings, never bytes.
-- No hardcoded tenant IDs anywhere — always sourced from JWT claims or `flask.g.tenant`.
-- React components: functional components and hooks only, no class components.
-- Error shape is always `{ "error": "...", "code": "..." }` with an appropriate HTTP status code.
+- **FastAPI dependency injection**: Authenticated claims and tenant IDs accessed via standard FastAPI `Depends()`.
+- **Async everywhere**: All DB operations use SQLAlchemy async sessions and asyncpg.
+- **Pydantic v2 schemas**: Strict validation with automatic OpenAPI serialization.
+- **Tenant isolation**: Zero cross-tenant data leaks guaranteed via ContextVar RLS hooks.
+- **JSON responses**: Unified REST responses with standard HTTP error codes.
