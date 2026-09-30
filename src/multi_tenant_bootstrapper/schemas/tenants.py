@@ -1,7 +1,8 @@
 """Tenant provisioning and config schemas."""
 
-from pydantic import BaseModel, EmailStr
-from typing import Optional, Any
+from uuid import UUID
+from pydantic import BaseModel, EmailStr, ConfigDict
+from typing import Optional, Any, Union
 
 
 class ProvisionTenantRequest(BaseModel):
@@ -19,15 +20,14 @@ class TenantConfigUpsert(BaseModel):
 
 
 class TenantResponse(BaseModel):
-    id: str
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Union[UUID, str]
     slug: str
     subdomain: str
     display_name: str
     plan: str
     status: str
-
-    class Config:
-        from_attributes = True
 
 
 class ProvisionTenantResponse(BaseModel):

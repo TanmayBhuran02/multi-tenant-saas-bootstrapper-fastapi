@@ -1,7 +1,8 @@
 """Authentication schemas."""
 
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from uuid import UUID
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from typing import Optional, Union
 
 
 class LoginRequest(BaseModel):
@@ -17,15 +18,14 @@ class RegisterRequest(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id: str
-    tenant_id: str
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Union[UUID, str]
+    tenant_id: Optional[Union[UUID, str]] = None
     email: EmailStr
     role: str
     is_superadmin: bool
     is_active: bool
-
-    class Config:
-        from_attributes = True
 
 
 class LoginResponse(BaseModel):

@@ -56,3 +56,12 @@ packages = ["src/multi_tenant_bootstrapper"]
 [tool.hatch.build.targets.wheel.force-include]
 "src/multi_tenant_bootstrapper/migrations" = "multi_tenant_bootstrapper/migrations"
 "src/multi_tenant_bootstrapper/frontend/dist" = "multi_tenant_bootstrapper/frontend/dist"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
