@@ -24,6 +24,7 @@ Packaged as an installable, PEP 621-compliant Python library (`multi-tenant-boot
 - [Frontend](#frontend)
 - [Testing](#testing)
 - [Conventions](#conventions)
+- [Future Scope](#future-scope)
 
 ---
 
@@ -397,4 +398,15 @@ testpaths = ["tests"]
 - **Async everywhere**: All DB operations use SQLAlchemy async sessions and asyncpg.
 - **Pydantic v2 schemas**: Strict validation with automatic OpenAPI serialization.
 - **Tenant isolation**: Zero cross-tenant data leaks guaranteed via ContextVar RLS hooks.
-- **JSON responses**: Unified REST responses with standard HTTP error codes.
+- [JSON responses](file:///c:/Users/tanma/.gemini/antigravity-ide/scratch/multi-tenant-saas-bootstrapper-fastapi/README.md): Unified REST responses with standard HTTP error codes.
+
+---
+
+## Future Scope
+
+- **Tenant-Based Partitioning (`tenant_id`) on Every Table**:
+  - Implement PostgreSQL declarative table partitioning across all tenant-scoped tables (`users`, `tenant_configs`, `feature_flags`, and custom domain tables).
+  - Eliminates noisy-neighbor performance degradation by pruning index scans to individual tenant partitions.
+  - Allows zero-downtime, instantaneous tenant offboarding via partition dropping (`DROP TABLE ...`) instead of cascading row deletions.
+  - Enables per-tenant storage tiering (hot NVMe for enterprise vs cold storage for inactive/archived tenants).
+

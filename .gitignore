@@ -93,3 +93,5 @@ docker-compose.yml
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+interview_qa.md
